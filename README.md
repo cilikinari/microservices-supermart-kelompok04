@@ -241,6 +241,28 @@ Semua akun pra-konfigurasi dalam `seed.sql` menggunakan kata sandi yang sama: **
 > 💡 **Fitur Praktis**: Halaman login (`/auth/login`) dilengkapi tombol **1-Click Test Login** untuk setiap akun di atas sehingga Anda tidak perlu mengetikkan email dan password berulang kali.
 
 ---
+## 🐳 Environment Microservices Database
+
+Konfigurasi database terisolasi untuk domain yang telah dikerjakan:
+
+| Domain | DBMS | Versi | Host Port | Container Port | Database | Username | Password |
+|---|---|---|---:|---:|---|---|---|
+| Inventory | MySQL | 8.0 | 3308 | 3306 | `inventory_service_db` | `inventory_admin` | `inventory_secret_pass` |
+
+### Konfigurasi Root Database
+
+| Domain | Root Password |
+|---|---|
+| Inventory | `root_inventory_pass` |
+
+### Menjalankan Environment Docker
+
+Dari root monorepo, jalankan:
+
+```powershell
+docker compose -f deployments/docker/docker-compose.yml up -d
+
+---
 
 ## 🚀 Panduan Menjalankan Aplikasi (How to Run)
 

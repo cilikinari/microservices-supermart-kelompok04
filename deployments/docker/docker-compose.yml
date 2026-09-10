@@ -1,4 +1,50 @@
 services:
+identity-db:
+    image: mysql:8.0
+    container_name: supermart-catalog-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: identity_service_db
+      MYSQL_USER: identity_admin
+      MYSQL_PASSWORD: identity_secret_pass
+      MYSQL_ROOT_PASSWORD: root_identity_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - identity_db_data:/var/lib/mysql
+      - ./init-scripts/identity:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "identity_admin", "-pidentity_secret_pass"]
+      
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - supermart-network
+
+  catalog-db:
+    image: mysql:8.0
+    container_name: supermart-catalog-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: catalog_service_db
+      MYSQL_USER: catalog_admin
+      MYSQL_PASSWORD: catalog_secret_pass
+      MYSQL_ROOT_PASSWORD: root_catalog_pass
+    ports:
+      - "3307:3306"
+    volumes:
+      - catalog_db_data:/var/lib/mysql
+      - ./init-scripts/catalog:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "catalog_admin", "-pcatalog_secret_pass"]
+      
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - supermart-network
+
   inventory-db:
     image: mysql:8.0
     container_name: supermart-inventory-db
@@ -15,8 +61,19 @@ services:
       - ./init-scripts/inventory:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "inventory_admin", "-pinventory_secret_pass"]
+      
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
       - supermart-network
+
+networks:
+  supermart-network:
+    driver: bridge
+    name: supermart-isolated-net
+
+volumes:
+  identity_db_data:
+  catalog_db_data:
+

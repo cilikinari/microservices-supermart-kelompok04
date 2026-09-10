@@ -1,7 +1,7 @@
 services:
 identity-db:
     image: mysql:8.0
-    container_name: supermart-catalog-db
+    container_name: supermart-identity-db
     restart: always
     environment:
       MYSQL_DATABASE: identity_service_db

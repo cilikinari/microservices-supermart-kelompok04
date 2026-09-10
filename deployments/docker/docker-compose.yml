@@ -22,7 +22,7 @@ identity-db:
     networks:
       - supermart-network
 
-  catalog-db:
+catalog-db:
     image: mysql:8.0
     container_name: supermart-catalog-db
     restart: always
@@ -45,7 +45,7 @@ identity-db:
     networks:
       - supermart-network
 
-  inventory-db:
+inventory-db:
     image: mysql:8.0
     container_name: supermart-inventory-db
     restart: always
@@ -76,4 +76,4 @@ networks:
 volumes:
   identity_db_data:
   catalog_db_data:
-
+  inventory_db_data:

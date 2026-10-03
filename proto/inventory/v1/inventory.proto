@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package supermart.inventory.v1;
+
+option go_package = "github.com/nusantara-supermart/backend/internal/inventory/pb;inventorypb";
+
+service InventoryService {
+  rpc GetStockItem (GetStockItemRequest) returns (GetStockItemResponse);
+
+  rpc BatchGetStockItems (BatchGetStockItemsRequest) returns (BatchGetStockItemsResponse);
+}
+
+message GetStockItemRequest {
+  string product_id = 1;
+  string warehouse_id = 2;
+}
+
+message Money {
+  string currency_code = 1; 
+  int64 amount = 2;       
+}
+
+message StockItem {
+  string product_id = 1;
+  string warehouse_id = 2;
+  int32 quantity_on_hand = 3;
+  int32 quantity_reserved = 4;
+  Money unit_price = 5;    // Integrasi pesan Money untuk nilai finansial produk
+}
+
+message GetStockItemResponse {
+  StockItem item = 1;
+}
+
+message BatchGetStockItemsRequest {
+  repeated string product_ids = 1;
+  string warehouse_id = 2;
+}
+
+message BatchGetStockItemsResponse {
+  repeated StockItem items = 1;
+}

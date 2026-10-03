@@ -25,16 +25,18 @@ type Service interface {
 }
 
 type orderService struct {
-	repo         Repository
-	catalogSvc   catalog.Service
-	inventorySvc inventory.Service
+	repo            Repository
+	catalogSvc      catalog.Service
+	inventorySvc    inventory.Service
+	inventoryClient *InventoryClient
 }
 
-func NewService(repo Repository, catalogSvc catalog.Service, inventorySvc inventory.Service) Service {
+func NewService(repo Repository, catalogSvc catalog.Service, inventorySvc inventory.Service, inventoryClient *InventoryClient) Service {
 	return &orderService{
-		repo:         repo,
-		catalogSvc:   catalogSvc,
-		inventorySvc: inventorySvc,
+		repo:            repo,
+		catalogSvc:      catalogSvc,
+		inventorySvc:    inventorySvc,
+		inventoryClient: inventoryClient,
 	}
 }
 
@@ -115,7 +117,7 @@ func (s *orderService) Checkout(customerID string, req CheckoutRequest) (*Order,
 	}
 
 	taxAmount := (grossTotal - discountAmount) * 0.11 // PPN 11%
-	shippingFee := 15000.00                          // Fixed estimate
+	shippingFee := 15000.00                           // Fixed estimate
 	totalNet := (grossTotal - discountAmount) + taxAmount + shippingFee
 
 	orderNumber := fmt.Sprintf("ORD-%s-%04d", time.Now().Format("20060102"), time.Now().Unix()%10000)

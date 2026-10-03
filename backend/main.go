@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,10 +12,12 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
+	"google.golang.org/grpc"
 
 	"github.com/nusantara-supermart/backend/internal/auth"
 	"github.com/nusantara-supermart/backend/internal/catalog"
 	"github.com/nusantara-supermart/backend/internal/inventory"
+	inventorypb "github.com/nusantara-supermart/backend/internal/inventory/pb/inventory/v1"
 	"github.com/nusantara-supermart/backend/internal/logistics"
 	"github.com/nusantara-supermart/backend/internal/order"
 	"github.com/nusantara-supermart/backend/internal/payment"
@@ -79,18 +82,22 @@ func main() {
 	procurementRepo := procurement.NewRepository(db)
 	supportRepo := support.NewRepository(db)
 
-	// Domain Services (Monolith cross-domain coupling)
+	// Inisialisasi gRPC Client untuk Inventory (Digunakan oleh Order)
+	grpcInventoryClient := order.NewInventoryClient("localhost:50051")
+
+	// Domain Services
 	authSvc := auth.NewService(authRepo, cfg)
 	catalogSvc := catalog.NewService(catalogRepo)
 	inventorySvc := inventory.NewService(inventoryRepo)
-	orderSvc := order.NewService(orderRepo, catalogSvc, inventorySvc)
+	// Passing grpcInventoryClient ke Order Service
+	orderSvc := order.NewService(orderRepo, catalogSvc, inventorySvc, grpcInventoryClient)
 	paymentSvc := payment.NewService(paymentRepo, orderSvc)
 	promotionSvc := promotion.NewService(promotionRepo)
 	logisticsSvc := logistics.NewService(logisticsRepo, orderSvc)
 	procurementSvc := procurement.NewService(procurementRepo)
 	supportSvc := support.NewService(supportRepo)
 
-	// Domain Handlers
+	// Domain Handlers (REST / Fiber)
 	authHandler := auth.NewHandler(authSvc)
 	catalogHandler := catalog.NewHandler(catalogSvc)
 	inventoryHandler := inventory.NewHandler(inventorySvc)
@@ -101,7 +108,7 @@ func main() {
 	procurementHandler := procurement.NewHandler(procurementSvc)
 	supportHandler := support.NewHandler(supportSvc)
 
-	// Register Domain Routers
+	// Register Domain Routers (REST / Fiber)
 	auth.RegisterRoutes(api, authHandler, cfg)
 	catalog.RegisterRoutes(api, catalogHandler, cfg)
 	inventory.RegisterRoutes(api, inventoryHandler, cfg)
@@ -111,6 +118,26 @@ func main() {
 	logistics.RegisterRoutes(api, logisticsHandler, cfg)
 	procurement.RegisterRoutes(api, procurementHandler, cfg)
 	support.RegisterRoutes(api, supportHandler, cfg)
+
+	// Jalankan gRPC Server (Inventory) di Port 50051
+	go func() {
+		grpcPort := ":50051"
+		lis, err := net.Listen("tcp", grpcPort)
+		if err != nil {
+			log.Fatalf("Failed to listen for gRPC on %s: %v", grpcPort, err)
+		}
+
+		grpcServer := grpc.NewServer()
+
+		// Register Inventory gRPC Handler
+		grpcInventoryHandler := inventory.NewGRPCHandler(inventorySvc)
+		inventorypb.RegisterInventoryServiceServer(grpcServer, grpcInventoryHandler)
+
+		log.Printf("🚀 gRPC Server listening on 0.0.0.0%s", grpcPort)
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("Failed to serve gRPC: %v", err)
+		}
+	}()
 
 	// Graceful Shutdown Setup
 	serverShutdown := make(chan os.Signal, 1)

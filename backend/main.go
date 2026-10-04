@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/recover"
+	"github.com/jmoiron/sqlx"
 	"google.golang.org/grpc"
 
 	"github.com/nusantara-supermart/backend/internal/auth"
@@ -30,20 +31,34 @@ import (
 	"github.com/nusantara-supermart/backend/pkg/response"
 )
 
+func connectDatabase(name string, cfg config.DatabaseConfig) *sqlx.DB {
+	db, err := database.ConnectMySQL(cfg)
+	if err != nil {
+		log.Printf("WARNING: %s MySQL connection failed: %v", name, err)
+		log.Printf("%s database will be retried when serving requests or initializing", name)
+		return nil
+	}
+	log.Printf("Connected to %s MySQL database successfully!", name)
+	return db
+}
+
+func closeDatabase(db *sqlx.DB) {
+	if db != nil {
+		_ = db.Close()
+	}
+}
+
 func main() {
 	cfg := config.LoadConfig()
 
 	log.Printf("Starting PT Nusantara SuperMart Monolith Backend in [%s] mode...", cfg.AppEnv)
 
-	// Database Connection
-	db, err := database.ConnectMySQL(cfg)
-	if err != nil {
-		log.Printf("WARNING: MySQL connection failed: %v", err)
-		log.Println("Backend will retry connecting when serving requests or initializing...")
-	} else {
-		log.Println("Connected to MySQL database successfully!")
-		defer db.Close()
-	}
+	identityDB := connectDatabase("identity", cfg.IdentityDB)
+	catalogDB := connectDatabase("catalog", cfg.CatalogDB)
+	inventoryDB := connectDatabase("inventory", cfg.InventoryDB)
+	defer closeDatabase(identityDB)
+	defer closeDatabase(catalogDB)
+	defer closeDatabase(inventoryDB)
 
 	app := fiber.New(fiber.Config{
 		AppName:      "PT Nusantara SuperMart Indonesia API v1.0",
@@ -61,7 +76,9 @@ func main() {
 	// Healthcheck
 	api.Get("/health", func(c fiber.Ctx) error {
 		dbStatus := "healthy"
-		if db == nil || db.Ping() != nil {
+		if identityDB == nil || identityDB.Ping() != nil ||
+			catalogDB == nil || catalogDB.Ping() != nil ||
+			inventoryDB == nil || inventoryDB.Ping() != nil {
 			dbStatus = "unreachable"
 		}
 		return response.Success(c, fiber.StatusOK, "Nusantara SuperMart Monolith API is operational", fiber.Map{
@@ -72,15 +89,16 @@ func main() {
 	})
 
 	// Domain Repositories
-	authRepo := auth.NewRepository(db)
-	catalogRepo := catalog.NewRepository(db)
-	inventoryRepo := inventory.NewRepository(db)
-	orderRepo := order.NewRepository(db)
-	paymentRepo := payment.NewRepository(db)
-	promotionRepo := promotion.NewRepository(db)
-	logisticsRepo := logistics.NewRepository(db)
-	procurementRepo := procurement.NewRepository(db)
-	supportRepo := support.NewRepository(db)
+	authRepo := auth.NewRepository(identityDB)
+	catalogRepo := catalog.NewRepository(catalogDB)
+	inventoryRepo := inventory.NewRepository(inventoryDB)
+	// These domains do not have dedicated schemas in the current split.
+	orderRepo := order.NewRepository(identityDB)
+	paymentRepo := payment.NewRepository(identityDB)
+	promotionRepo := promotion.NewRepository(identityDB)
+	logisticsRepo := logistics.NewRepository(identityDB)
+	procurementRepo := procurement.NewRepository(identityDB)
+	supportRepo := support.NewRepository(identityDB)
 
 	// Inisialisasi gRPC Client untuk Inventory (Digunakan oleh Order)
 	grpcInventoryClient := order.NewInventoryClient("localhost:50051")

@@ -37,10 +37,8 @@ func NewRepository(db *sqlx.DB) Repository {
 func (r *mysqlRepository) GetStocks(warehouseID string) ([]InventoryStock, error) {
 	query := `
 		SELECT s.id, s.product_id, s.warehouse_id, s.batch_id, s.quantity_on_hand, s.quantity_reserved, s.updated_at,
-		       p.title AS product_title, p.sku AS product_sku, p.base_price AS product_price,
 		       w.warehouse_name, w.city AS warehouse_city
 		FROM inventory_stocks s
-		JOIN products p ON s.product_id = p.id
 		JOIN warehouses w ON s.warehouse_id = w.id
 	`
 	args := []interface{}{}
@@ -48,7 +46,7 @@ func (r *mysqlRepository) GetStocks(warehouseID string) ([]InventoryStock, error
 		query += " WHERE s.warehouse_id = ?"
 		args = append(args, warehouseID)
 	}
-	query += " ORDER BY w.city ASC, p.title ASC"
+	query += " ORDER BY w.city ASC, s.product_id ASC"
 
 	var stocks []InventoryStock
 	err := r.db.Select(&stocks, query, args...)
@@ -58,10 +56,8 @@ func (r *mysqlRepository) GetStocks(warehouseID string) ([]InventoryStock, error
 func (r *mysqlRepository) GetStockByID(id string) (*InventoryStock, error) {
 	query := `
 		SELECT s.id, s.product_id, s.warehouse_id, s.batch_id, s.quantity_on_hand, s.quantity_reserved, s.updated_at,
-		       p.title AS product_title, p.sku AS product_sku, p.base_price AS product_price,
 		       w.warehouse_name, w.city AS warehouse_city
 		FROM inventory_stocks s
-		JOIN products p ON s.product_id = p.id
 		JOIN warehouses w ON s.warehouse_id = w.id
 		WHERE s.id = ? LIMIT 1
 	`
@@ -76,10 +72,8 @@ func (r *mysqlRepository) GetStockByID(id string) (*InventoryStock, error) {
 func (r *mysqlRepository) GetStockByProductAndWarehouse(productID, warehouseID string) (*InventoryStock, error) {
 	query := `
 		SELECT s.id, s.product_id, s.warehouse_id, s.batch_id, s.quantity_on_hand, s.quantity_reserved, s.updated_at,
-		       p.title AS product_title, p.sku AS product_sku, p.base_price AS product_price,
 		       w.warehouse_name, w.city AS warehouse_city
 		FROM inventory_stocks s
-		JOIN products p ON s.product_id = p.id
 		JOIN warehouses w ON s.warehouse_id = w.id
 		WHERE s.product_id = ? AND s.warehouse_id = ? LIMIT 1
 	`
@@ -208,9 +202,8 @@ func (r *mysqlRepository) CreateStockMutation(m *StockMutation) error {
 func (r *mysqlRepository) GetStockMutations() ([]StockMutation, error) {
 	query := `
 		SELECT sm.id, sm.product_id, sm.source_warehouse_id, sm.destination_warehouse_id, sm.quantity, sm.mutation_date,
-		       p.title AS product_title, sw.warehouse_name AS source_wh_name, dw.warehouse_name AS dest_wh_name
+		       sw.warehouse_name AS source_wh_name, dw.warehouse_name AS dest_wh_name
 		FROM stock_mutations sm
-		JOIN products p ON sm.product_id = p.id
 		JOIN warehouses sw ON sm.source_warehouse_id = sw.id
 		JOIN warehouses dw ON sm.destination_warehouse_id = dw.id
 		ORDER BY sm.mutation_date DESC
@@ -245,9 +238,8 @@ func (r *mysqlRepository) GetWarehouseZones(warehouseID string) ([]WarehouseZone
 func (r *mysqlRepository) GetLowStockAlerts() ([]LowStockAlert, error) {
 	query := `
 		SELECT lsa.id, lsa.product_id, lsa.warehouse_id, lsa.current_stock, lsa.threshold, lsa.is_resolved, lsa.alert_time,
-		       p.title AS product_title, p.sku AS product_sku, w.warehouse_name
+		       w.warehouse_name
 		FROM low_stock_alerts lsa
-		JOIN products p ON lsa.product_id = p.id
 		JOIN warehouses w ON lsa.warehouse_id = w.id
 		ORDER BY lsa.is_resolved ASC, lsa.alert_time DESC
 	`

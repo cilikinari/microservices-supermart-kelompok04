@@ -9,13 +9,13 @@ import (
 	"github.com/nusantara-supermart/backend/pkg/config"
 )
 
-func ConnectMySQL(cfg *config.Config) (*sqlx.DB, error) {
+func ConnectMySQL(cfg config.DatabaseConfig) (*sqlx.DB, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&charset=utf8mb4&loc=Local",
-		cfg.MySQLUser,
-		cfg.MySQLPassword,
-		cfg.MySQLHost,
-		cfg.MySQLPort,
-		cfg.MySQLDatabase,
+		cfg.User,
+		cfg.Password,
+		cfg.Host,
+		cfg.Port,
+		cfg.Database,
 	)
 
 	db, err := sqlx.Connect("mysql", dsn)

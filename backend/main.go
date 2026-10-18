@@ -20,6 +20,7 @@ import (
 	"github.com/nusantara-supermart/backend/internal/inventory"
 	inventorypb "github.com/nusantara-supermart/backend/internal/inventory/pb/inventory/v1"
 	"github.com/nusantara-supermart/backend/internal/logistics"
+	"github.com/nusantara-supermart/backend/internal/messaging"
 	"github.com/nusantara-supermart/backend/internal/order"
 	"github.com/nusantara-supermart/backend/internal/payment"
 	"github.com/nusantara-supermart/backend/internal/procurement"
@@ -103,18 +104,32 @@ func main() {
 	// Inisialisasi gRPC Client untuk Inventory (Digunakan oleh Order)
 	grpcInventoryClient := order.NewInventoryClient("localhost:50051")
 
+	// Koneksi RabbitMQ
+	rabbitMQ, err := messaging.ConnectRabbitMQ()
+	if err != nil {
+		log.Fatalf("Gagal koneksi RabbitMQ: %v", err)
+	}
+	defer rabbitMQ.Close()
+	log.Println("RabbitMQ connected successfully")
+	if err := rabbitMQ.ConsumeOrderCreated(identityDB); err != nil {
+		log.Fatalf("Gagal menjalankan consumer RabbitMQ: %v", err)
+	}
+	log.Println("RabbitMQ consumer started")
+
 	// Domain Services
 	authSvc := auth.NewService(authRepo, cfg)
 	catalogSvc := catalog.NewService(catalogRepo)
 	inventorySvc := inventory.NewService(inventoryRepo)
+
 	// Passing grpcInventoryClient ke Order Service
 	orderSvc := order.NewService(orderRepo, catalogSvc, inventorySvc, grpcInventoryClient)
+	orderSvc.SetRabbitMQ(rabbitMQ)
+
 	paymentSvc := payment.NewService(paymentRepo, orderSvc)
 	promotionSvc := promotion.NewService(promotionRepo)
 	logisticsSvc := logistics.NewService(logisticsRepo, orderSvc)
 	procurementSvc := procurement.NewService(procurementRepo)
 	supportSvc := support.NewService(supportRepo)
-
 	// Domain Handlers (REST / Fiber)
 	authHandler := auth.NewHandler(authSvc)
 	catalogHandler := catalog.NewHandler(catalogSvc)

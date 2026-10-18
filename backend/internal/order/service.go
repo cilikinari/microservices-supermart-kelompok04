@@ -8,9 +8,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/nusantara-supermart/backend/internal/catalog"
 	"github.com/nusantara-supermart/backend/internal/inventory"
+	"github.com/nusantara-supermart/backend/internal/messaging"
 )
 
 type Service interface {
+	SetRabbitMQ(rabbitMQ *messaging.RabbitMQ)
 	GetCart(customerID string) (*Cart, error)
 	AddToCart(customerID string, req AddToCartRequest) error
 	UpdateCartItem(itemID string, req UpdateCartItemRequest) error
@@ -29,6 +31,7 @@ type orderService struct {
 	catalogSvc      catalog.Service
 	inventorySvc    inventory.Service
 	inventoryClient *InventoryClient
+	rabbitMQ        *messaging.RabbitMQ
 }
 
 func NewService(repo Repository, catalogSvc catalog.Service, inventorySvc inventory.Service, inventoryClient *InventoryClient) Service {
@@ -40,15 +43,21 @@ func NewService(repo Repository, catalogSvc catalog.Service, inventorySvc invent
 	}
 }
 
+func (s *orderService) SetRabbitMQ(rabbitMQ *messaging.RabbitMQ) {
+	s.rabbitMQ = rabbitMQ
+}
+
 func (s *orderService) GetCart(customerID string) (*Cart, error) {
 	cart, err := s.repo.GetOrCreateCart(customerID)
 	if err != nil {
 		return nil, err
 	}
+
 	items, err := s.repo.GetCartItems(cart.ID)
 	if err != nil {
 		return nil, err
 	}
+
 	cart.Items = items
 	return cart, nil
 }
@@ -58,7 +67,6 @@ func (s *orderService) AddToCart(customerID string, req AddToCartRequest) error 
 		return errors.New("quantity must be greater than zero")
 	}
 
-	// Coupling check: verify product exists in Catalog domain
 	prod, _, _, err := s.catalogSvc.GetProductByID(req.ProductID)
 	if err != nil || prod == nil {
 		return errors.New("product does not exist")
@@ -95,9 +103,9 @@ func (s *orderService) Checkout(customerID string, req CheckoutRequest) (*Order,
 		return nil, fmt.Errorf("order status AWAITING_PAYMENT not found: %w", err)
 	}
 
-	// Calculate totals
 	var grossTotal float64
 	orderItems := make([]OrderItem, len(cart.Items))
+
 	for i, item := range cart.Items {
 		grossTotal += item.Subtotal
 		orderItems[i] = OrderItem{
@@ -110,14 +118,14 @@ func (s *orderService) Checkout(customerID string, req CheckoutRequest) (*Order,
 
 	discountAmount := 0.00
 	if req.VoucherCode != "" {
-		discountAmount = 20000.00 // Standard voucher discount
+		discountAmount = 20000.00
 		if discountAmount > grossTotal {
 			discountAmount = grossTotal
 		}
 	}
 
-	taxAmount := (grossTotal - discountAmount) * 0.11 // PPN 11%
-	shippingFee := 15000.00                           // Fixed estimate
+	taxAmount := (grossTotal - discountAmount) * 0.11
+	shippingFee := 15000.00
 	totalNet := (grossTotal - discountAmount) + taxAmount + shippingFee
 
 	orderNumber := fmt.Sprintf("ORD-%s-%04d", time.Now().Format("20060102"), time.Now().Unix()%10000)
@@ -141,38 +149,48 @@ func (s *orderService) Checkout(customerID string, req CheckoutRequest) (*Order,
 	if courierName == "" {
 		courierName = "GoSend Instant Fulfillment"
 	}
+
 	shipping := &OrderShippingDetail{
 		OrderID:      orderID,
 		CourierName:  courierName,
 		ShippingCost: shippingFee,
 	}
 
-	// Coupling check: reserve stock in Inventory domain
 	for _, item := range orderItems {
-		if err := s.inventorySvc.ReserveStock(item.ProductID, req.WarehouseID, orderID, item.Quantity); err != nil {
+		if err := s.inventorySvc.ReserveStock(
+			item.ProductID, req.WarehouseID, orderID, item.Quantity,
+		); err != nil {
 			return nil, fmt.Errorf("failed to reserve stock for item %s: %w", item.ProductID, err)
 		}
 	}
 
-	// Save order
 	if err := s.repo.CreateOrder(newOrder, orderItems, shipping); err != nil {
-		// Rollback reservations
 		_ = s.inventorySvc.ReleaseStock(orderID)
 		return nil, fmt.Errorf("failed to create order: %w", err)
 	}
 
-	// Clear cart
-	_ = s.repo.ClearCart(cart.ID)
+	// Publish event setelah order berhasil disimpan.
+	if s.rabbitMQ != nil {
+		for _, item := range orderItems {
+			if err := s.rabbitMQ.PublishOrderCreated(
+				orderID,
+				item.ProductID,
+				req.WarehouseID,
+				item.Quantity,
+			); err != nil {
+				return nil, fmt.Errorf("order tersimpan, tetapi gagal publish event: %w", err)
+			}
+		}
+	}
 
+	_ = s.repo.ClearCart(cart.ID)
 	return newOrder, nil
 }
 
 func (s *orderService) GetOrders(customerID, userRole, statusID string) ([]Order, error) {
-	// If customer, only see own orders
 	if userRole == "CUSTOMER" {
 		return s.repo.GetOrders(customerID, statusID)
 	}
-	// Staff/Admin sees all
 	return s.repo.GetOrders("", statusID)
 }
 
@@ -181,6 +199,7 @@ func (s *orderService) GetOrderByID(id string) (*Order, []OrderItem, *OrderShipp
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
 	}
+
 	items, _ := s.repo.GetOrderItems(id)
 	shipping, _ := s.repo.GetOrderShippingDetail(id)
 	histories, _ := s.repo.GetOrderStatusHistories(id)
@@ -203,9 +222,7 @@ func (s *orderService) CancelOrder(orderID, reason, userID string) error {
 		return err
 	}
 
-	// Coupling: release reserved stock in Inventory domain
 	_ = s.inventorySvc.ReleaseStock(orderID)
-
 	return s.repo.CancelOrder(orderID, reason, userID, cancelledStatus.ID)
 }
 

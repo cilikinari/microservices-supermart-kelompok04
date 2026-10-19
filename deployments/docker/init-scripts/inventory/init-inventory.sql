@@ -79,6 +79,20 @@ CREATE TABLE IF NOT EXISTS `stock_reservations` (
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+-- Idempotency ledger untuk Consumer OrderPlacedEvent.
+-- Baris ini hanya di-commit bersama mutasi stok.
+CREATE TABLE IF NOT EXISTS `inventory_processed_events` (
+    `event_id` VARCHAR(36) NOT NULL,
+    `event_type` VARCHAR(100) NOT NULL,
+    `consumer_name` VARCHAR(100) NOT NULL,
+    `aggregate_id` VARCHAR(36) NOT NULL,
+    `processed_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (`event_id`),
+    KEY `idx_inventory_processed_events_aggregate`
+        (`aggregate_id`, `event_type`),
+    KEY `idx_inventory_processed_events_processed_at` (`processed_at`)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS `stock_opnames` (
     `id` VARCHAR(36) PRIMARY KEY,
     `warehouse_id` VARCHAR(36) NOT NULL,

@@ -1,3 +1,4 @@
+
 services:
   identity-db:
     image: mysql:8.0
@@ -65,6 +66,26 @@ services:
     networks:
       - supermart-network
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: supermart-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: supermart
+      RABBITMQ_DEFAULT_PASS: supermart123
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - supermart-network
+
 networks:
   supermart-network:
     driver: bridge
@@ -74,3 +95,4 @@ volumes:
   identity_db_data:
   catalog_db_data:
   inventory_db_data:
+  rabbitmq_data:

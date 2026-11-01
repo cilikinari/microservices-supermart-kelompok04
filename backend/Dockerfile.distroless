@@ -12,8 +12,6 @@ RUN go mod download && go mod verify
 
 COPY . .
 
-# Kompilasi biner statis murni tanpa ketergantungan C library (CGO_ENABLED=0)
-# Flag -ldflags="-s -w -extldflags '-static'" memotong simbol debug dan DWARF
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-s -w -extldflags '-static'" \
     -o /bin/supermart-backend .
@@ -22,7 +20,6 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 RUN adduser -D -g '' -u 10001 appuser
 
 # STAGE 2: Minimal Runtime Environment (Distroless Non-Root)
-# Menggunakan base image Distroless Static Debian 12 dengan nonroot user bawaan
 FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app

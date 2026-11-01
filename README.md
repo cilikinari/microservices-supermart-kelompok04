@@ -54,3 +54,77 @@ docker compose -f deployments/docker/docker-compose.yml up -d
 ```bash
 docker compose -f deployments/docker/docker-compose.yml down
 ```
+
+
+## Rekayasa Multi-Stage Build & Skrip Pengujian Kontainer 
+
+Cabang `feat/docker-optimization` mengimplementasikan pola *Multi-Stage Build* dan *Container Hardening* pada Backend Go (`inventory-service`) dan Frontend Angular.
+
+### Skrip Build Image
+
+Jalankan perintah berikut dari direktori root untuk membangun seluruh varian image:
+
+#### 1. Backend Service (Go)
+```bash
+# Baseline (Single-Stage Naive Build)
+docker build -t supermart-backend:baseline -f backend/Dockerfile.baseline backend
+
+# Multi-Stage Varian 1 (Alpine 3.19)
+docker build -t supermart-backend:alpine -f backend/Dockerfile.alpine backend
+
+# Multi-Stage Varian 2 (Google Distroless - Non-Root & No Shell)
+docker build -t supermart-backend:distroless -f backend/Dockerfile.distroless backend
+
+# Multi-Stage Varian 3 (Scratch - 0 Byte Base)
+docker build -t supermart-backend:scratch -f backend/Dockerfile.scratch backend
+```
+
+#### 2. Frontend Web (Angular)
+```bash
+# Baseline (Single-Stage Dev Server)
+docker build -t supermart-frontend:baseline -f frontend/Dockerfile.baseline frontend
+
+# Multi-Stage Production (Nginx Alpine Serving)
+docker build -t supermart-frontend:optimized frontend
+```
+
+---
+
+### Skrip Menjalankan Kontainer Pengujian
+
+```bash
+# Jalankan Kontainer Backend (Pilih salah satu port varian)
+docker run -d -p 3001:3000 -p 50051:50051 --name be-test-alpine supermart-backend:alpine
+docker run -d -p 3002:3000 -p 50052:50051 --name be-test-distroless supermart-backend:distroless
+docker run -d -p 3003:3000 -p 50053:50051 --name be-test-scratch supermart-backend:scratch
+
+# Jalankan Kontainer Frontend (dengan mock upstream backend)
+docker run -d -p 8080:80 --add-host backend:127.0.0.1 --name test-fe supermart-frontend:optimized
+```
+
+---
+
+### Skrip Pengujian Operasionalitas (Health Check & Liveness Probe)
+
+Perintah validasi untuk membuktikan bahwa seluruh kontainer melayani permintaan HTTP secara normal (`HTTP/1.1 200 OK`):
+
+```bash
+# 1. Uji Backend Varian A (Alpine)
+curl.exe -i http://localhost:3001/api/v1/health
+
+# 2. Uji Backend Varian B (Distroless)
+curl.exe -i http://localhost:3002/api/v1/health
+
+# 3. Uji Backend Varian C (Scratch)
+curl.exe -i http://localhost:3003/api/v1/health
+
+# 4. Uji Keamanan Hardening Distroless (Verifikasi Ketiadaan Shell / No Shell)
+docker exec -it be-test-distroless /bin/sh
+# Ekspektasi output: OCI runtime exec failed ... stat /bin/sh: no such file or directory
+
+# 5. Uji Frontend Web Angular
+curl.exe -i http://localhost:8080
+# Atau buka peramban di: http://localhost:8080
+```
+
+---

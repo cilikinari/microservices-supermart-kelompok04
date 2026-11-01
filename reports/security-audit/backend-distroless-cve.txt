@@ -1,0 +1,43 @@
+
+Report Summary
+
+┌─────────────────────────────────────────────┬──────────┬─────────────────┬─────────┐
+│                   Target                    │   Type   │ Vulnerabilities │ Secrets │
+├─────────────────────────────────────────────┼──────────┼─────────────────┼─────────┤
+│ supermart-backend:distroless (debian 12.15) │  debian  │        0        │    -    │
+├─────────────────────────────────────────────┼──────────┼─────────────────┼─────────┤
+│ app/supermart-backend                       │ gobinary │        5        │    -    │
+└─────────────────────────────────────────────┴──────────┴─────────────────┴─────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+
+app/supermart-backend (gobinary)
+================================
+Total: 5 (HIGH: 4, CRITICAL: 1)
+
+┌───────────────────────────────┬────────────────┬──────────┬────────┬───────────────────┬───────────────┬──────────────────────────────────────────────────────────────┐
+│            Library            │ Vulnerability  │ Severity │ Status │ Installed Version │ Fixed Version │                            Title                             │
+├───────────────────────────────┼────────────────┼──────────┼────────┼───────────────────┼───────────────┼──────────────────────────────────────────────────────────────┤
+│ github.com/gofiber/fiber/v3   │ CVE-2026-25891 │ HIGH     │ fixed  │ v3.0.0-beta.4     │ 3.1.0         │ Fiber has an Arbitrary File Read in Static Middleware on     │
+│                               │                │          │        │                   │               │ Windows                                                      │
+│                               │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-25891                   │
+│                               ├────────────────┤          │        │                   │               ├──────────────────────────────────────────────────────────────┤
+│                               │ CVE-2026-25899 │          │        │                   │               │ Fiber is Vulnerable to Denial of Service via Flash Cookie    │
+│                               │                │          │        │                   │               │ Unbounded Allocation...                                      │
+│                               │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-25899                   │
+├───────────────────────────────┼────────────────┼──────────┤        ├───────────────────┼───────────────┼──────────────────────────────────────────────────────────────┤
+│ github.com/gofiber/utils/v2   │ CVE-2025-66565 │ CRITICAL │        │ v2.0.0-beta.7     │ 2.0.0-rc.4    │ Fiber Utils UUIDv4 and UUID Silent Fallback to Predictable   │
+│                               │                │          │        │                   │               │ Values                                                       │
+│                               │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2025-66565                   │
+├───────────────────────────────┼────────────────┼──────────┤        ├───────────────────┼───────────────┼──────────────────────────────────────────────────────────────┤
+│ github.com/klauspost/compress │ CVE-2026-63209 │ HIGH     │        │ v1.17.11          │ 1.18.7        │ github.com/klauspost/compress: klauspost/compress: Denial of │
+│                               │                │          │        │                   │               │ Service via integer overflow in dictionary processing        │
+│                               │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-63209                   │
+├───────────────────────────────┼────────────────┤          │        ├───────────────────┼───────────────┼──────────────────────────────────────────────────────────────┤
+│ golang.org/x/net              │ CVE-2026-78669 │          │        │ v0.57.0           │ 0.60.0        │ net/http: net/http/internal/http2: golang.org/x/net/http2:   │
+│                               │                │          │        │                   │               │ net/http: Denial of Service via excessive HTTP/2 SETTINGS    │
+│                               │                │          │        │                   │               │ frames...                                                    │
+│                               │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-78669                   │
+└───────────────────────────────┴────────────────┴──────────┴────────┴───────────────────┴───────────────┴──────────────────────────────────────────────────────────────┘

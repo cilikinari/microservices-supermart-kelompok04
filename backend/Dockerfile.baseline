@@ -1,0 +1,19 @@
+# ==========================================
+# BASELINE: Naive Single-Stage Go Build
+# Base image monolitik membawa compiler toolchain & utilitas OS Debian/Ubuntu
+# ==========================================
+FROM golang:latest
+
+WORKDIR /app
+
+# Anti-pattern: Salin seluruh source code langsung tanpa optimasi layer cache
+COPY . .
+
+# Kompilasi default tanpa flag stripping (-ldflags)
+RUN go build -o supermart-backend .
+
+EXPOSE 3000
+
+# Berjalan sebagai default user (root)
+CMD ["./supermart-backend"]
+

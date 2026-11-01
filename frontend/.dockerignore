@@ -1,0 +1,22 @@
+# Direktori Git & VCS
+.git
+.gitignore
+# Dependensi lokal & compiler cache
+node_modules
+dist
+vendor
+tmp
+bin
+*.exe
+*.dll
+# Kredensial & konfigurasi lokal
+.env
+.env.*
+*.pem
+*.key
+# Dokumentasi & berkas IDE
+*.md
+.vscode
+.idea
+Dockerfile*
+docker-compose*.yml

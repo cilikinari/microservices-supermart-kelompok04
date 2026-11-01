@@ -1,26 +1,43 @@
 # Build stage
 FROM golang:1.26-alpine AS builder
 
+# Pasang sertifikat SSL CA & tzdata untuk HTTPS dan zona waktu
+RUN apk add --no-cache ca-certificates tzdata
+
 WORKDIR /app
 
-RUN apk add --no-cache git
-
+# Optimasi Layer Cache: Salin manifes dependensi terlebih dahulu
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod download && go mod verify
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o supermart-backend .
+# Kompilasi biner statis murni tanpa ketergantungan C library (CGO_ENABLED=0)
+# Flag -ldflags="-s -w -extldflags '-static'" memotong simbol debug dan DWARF
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-s -w -extldflags '-static'" \
+    -o /bin/supermart-backend .
 
-# Runtime stage
-FROM alpine:3.20
+# Buat pengguna non-privilese untuk Stage 2 
+RUN adduser -D -g '' -u 10001 appuser
 
-RUN apk --no-cache add ca-certificates tzdata
+# STAGE 2: Minimal Runtime Environment (Distroless Non-Root)
+# Menggunakan base image Distroless Static Debian 12 dengan nonroot user bawaan
+FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app
 
-COPY --from=builder /app/supermart-backend /app/supermart-backend
+# Salin zona waktu & sertifikat SSL dari builder
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Salin biner hasil kompilasi
+COPY --from=builder /bin/supermart-backend /app/supermart-backend
+
+# Terapkan Principle of Least Privilege: jalankan aplikasi sebagai user non-root (UID 65532)
+USER nonroot:nonroot
 
 EXPOSE 3000
 
-CMD ["/app/supermart-backend"]
+ENTRYPOINT ["/app/supermart-backend"]
+

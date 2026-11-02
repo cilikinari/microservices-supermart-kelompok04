@@ -1,0 +1,24 @@
+# STAGE 1: Builder
+FROM golang:1.23-alpine AS builder
+
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-s -w" -o main .
+
+# STAGE 2: Runtime Alpine 3.19
+FROM alpine:3.19
+
+RUN apk --no-cache add ca-certificates tzdata
+WORKDIR /app
+
+COPY --from=builder /app/main /app/main
+
+EXPOSE 3000 50051
+
+CMD ["/app/main"]

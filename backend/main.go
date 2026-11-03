@@ -101,29 +101,36 @@ func main() {
 	procurementRepo := procurement.NewRepository(identityDB)
 	supportRepo := support.NewRepository(identityDB)
 
-	// Inisialisasi gRPC Client untuk Inventory (Digunakan oleh Order)
-	grpcInventoryClient := order.NewInventoryClient("localhost:50051")
-
-	// Koneksi RabbitMQ
-	rabbitMQ, err := messaging.ConnectRabbitMQ()
-	if err != nil {
-		log.Fatalf("Gagal koneksi RabbitMQ: %v", err)
-	}
-	defer rabbitMQ.Close()
-	log.Println("RabbitMQ connected successfully")
-	if err := rabbitMQ.ConsumeOrderCreated(identityDB); err != nil {
-		log.Fatalf("Gagal menjalankan consumer RabbitMQ: %v", err)
-	}
-	log.Println("RabbitMQ consumer started")
-
 	// Domain Services
 	authSvc := auth.NewService(authRepo, cfg)
 	catalogSvc := catalog.NewService(catalogRepo)
 	inventorySvc := inventory.NewService(inventoryRepo)
 
+	// Inisialisasi gRPC Client untuk Inventory (Digunakan oleh Order)
+	grpcInventoryClient := order.NewInventoryClient("localhost:50051")
+
+	// Inisialisasi Real Consumer untuk domain Inventory
+	inventoryConsumer := inventory.NewInventoryConsumer(inventoryDB)
+
+	// Koneksi RabbitMQ
+	rabbitMQ, err := messaging.ConnectRabbitMQ()
+	if err != nil {
+		log.Printf("WARNING: Gagal koneksi ke RabbitMQ: %v. Berjalan dalam mode fallback.", err)
+	} else {
+		defer rabbitMQ.Close()
+		log.Println("RabbitMQ connected successfully")
+		if err := rabbitMQ.ConsumeOrderEvents(inventoryConsumer.HandleOrderPlaced, identityDB); err != nil {
+			log.Printf("WARNING: Gagal menjalankan consumer RabbitMQ: %v", err)
+		} else {
+			log.Println("RabbitMQ Inventory Consumer started successfully")
+		}
+	}
+
 	// Passing grpcInventoryClient ke Order Service
 	orderSvc := order.NewService(orderRepo, catalogSvc, inventorySvc, grpcInventoryClient)
-	orderSvc.SetRabbitMQ(rabbitMQ)
+	if rabbitMQ != nil {
+		orderSvc.SetRabbitMQ(rabbitMQ)
+	}
 
 	paymentSvc := payment.NewService(paymentRepo, orderSvc)
 	promotionSvc := promotion.NewService(promotionRepo)

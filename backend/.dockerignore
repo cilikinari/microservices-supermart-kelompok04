@@ -1,0 +1,28 @@
+# Git version control
+.git
+.gitignore
+
+# Environment & secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Local binaries & build artifacts
+*.exe
+*.dll
+*.so
+bin
+dist
+tmp
+
+# IDE & OS files
+.vscode
+.idea
+.DS_Store
+
+# Reports & documentation
+reports
+docs
+*.md
+

@@ -66,12 +66,8 @@ func (r *mysqlRepository) GetOrCreateCart(customerID string) (*Cart, error) {
 
 func (r *mysqlRepository) GetCartItems(cartID string) ([]CartItem, error) {
 	query := `
-		SELECT ci.id, ci.cart_id, ci.product_id, ci.quantity,
-		       p.title AS product_title, p.sku AS product_sku, p.base_price AS product_price,
-		       COALESCE(pi.image_url, 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=500') AS image_url
+		SELECT ci.id, ci.cart_id, ci.product_id, ci.quantity
 		FROM cart_items ci
-		JOIN products p ON ci.product_id = p.id
-		LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = 1
 		WHERE ci.cart_id = ?
 		ORDER BY ci.id ASC
 	`
@@ -79,10 +75,6 @@ func (r *mysqlRepository) GetCartItems(cartID string) ([]CartItem, error) {
 	err := r.db.Select(&items, query, cartID)
 	if err != nil {
 		return nil, err
-	}
-
-	for i := range items {
-		items[i].Subtotal = float64(items[i].Quantity) * items[i].ProductPrice
 	}
 	return items, nil
 }
@@ -149,9 +141,9 @@ func (r *mysqlRepository) CreateOrder(o *Order, items []OrderItem, shipping *Ord
 			itemID = uuid.NewString()
 		}
 		_, err = tx.Exec(`
-			INSERT INTO order_items (id, order_id, product_id, quantity, unit_price, subtotal)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, itemID, o.ID, item.ProductID, item.Quantity, item.UnitPrice, item.Subtotal)
+			INSERT INTO order_items (id, order_id, product_id, product_title, product_sku, quantity, unit_price, subtotal)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, itemID, o.ID, item.ProductID, item.ProductTitle, item.ProductSKU, item.Quantity, item.UnitPrice, item.Subtotal)
 		if err != nil {
 			return fmt.Errorf("insert order item: %w", err)
 		}
@@ -244,12 +236,12 @@ func (r *mysqlRepository) GetOrders(customerID, statusID string) ([]Order, error
 		       o.total_gross_amount, o.discount_amount, o.tax_amount, o.shipping_fee, o.total_net_amount, o.created_at,
 		       os.status_code, os.status_name,
 		       u.full_name AS customer_name, u.email AS customer_email,
-		       w.warehouse_name,
-		       CONCAT(ua.street_address, ', ', ua.city) AS shipping_address
+		       COALESCE(w.warehouse_name, 'Gudang Utama') AS warehouse_name,
+		       CONCAT(COALESCE(ua.street_address, ''), ', ', COALESCE(ua.city, '')) AS shipping_address
 		FROM orders o
 		JOIN order_statuses os ON o.order_status_id = os.id
 		JOIN users u ON o.customer_id = u.id
-		JOIN warehouses w ON o.warehouse_id = w.id
+		LEFT JOIN warehouses w ON o.warehouse_id = w.id
 		LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
 	`
 	args := []interface{}{}
@@ -280,12 +272,12 @@ func (r *mysqlRepository) GetOrderByID(id string) (*Order, error) {
 		       o.total_gross_amount, o.discount_amount, o.tax_amount, o.shipping_fee, o.total_net_amount, o.created_at,
 		       os.status_code, os.status_name,
 		       u.full_name AS customer_name, u.email AS customer_email,
-		       w.warehouse_name,
-		       CONCAT(ua.street_address, ', ', ua.city) AS shipping_address
+		       COALESCE(w.warehouse_name, 'Gudang Utama') AS warehouse_name,
+		       CONCAT(COALESCE(ua.street_address, ''), ', ', COALESCE(ua.city, '')) AS shipping_address
 		FROM orders o
 		JOIN order_statuses os ON o.order_status_id = os.id
 		JOIN users u ON o.customer_id = u.id
-		JOIN warehouses w ON o.warehouse_id = w.id
+		LEFT JOIN warehouses w ON o.warehouse_id = w.id
 		LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
 		WHERE o.id = ? LIMIT 1
 	`
@@ -300,9 +292,9 @@ func (r *mysqlRepository) GetOrderByID(id string) (*Order, error) {
 func (r *mysqlRepository) GetOrderItems(orderID string) ([]OrderItem, error) {
 	query := `
 		SELECT oi.id, oi.order_id, oi.product_id, oi.quantity, oi.unit_price, oi.subtotal,
-		       p.title AS product_title, p.sku AS product_sku
+		       COALESCE(oi.product_title, '') AS product_title,
+		       COALESCE(oi.product_sku, '') AS product_sku
 		FROM order_items oi
-		JOIN products p ON oi.product_id = p.id
 		WHERE oi.order_id = ?
 	`
 	var items []OrderItem

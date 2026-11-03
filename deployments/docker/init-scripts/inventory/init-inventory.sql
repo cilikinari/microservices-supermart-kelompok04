@@ -208,4 +208,12 @@ INSERT INTO `stock_opname_items` (`id`, `stock_opname_id`, `product_id`, `system
 ('opi00001-0000-0000-0000-000000000001', 'opn00001-0000-0000-0000-000000000001', 'p0000001-0000-0000-0000-000000000003', 200, 200, 0),
 ('opi00001-0000-0000-0000-000000000002', 'opn00001-0000-0000-0000-000000000001', 'p0000001-0000-0000-0000-000000000004', 46, 45, -1);
 
+-- Data uji bawaan untuk pengujian beban dan integrasi RabbitMQ (cmd/publish-test)
+INSERT IGNORE INTO `warehouses` (`id`, `warehouse_code`, `warehouse_name`, `address`, `city`) VALUES
+('TEST-WAREHOUSE-001', 'WH-TEST', 'Gudang Pengujian Otomatis', 'Jl. Pengujian No. 1', 'Jakarta');
+
+INSERT IGNORE INTO `inventory_stocks` (`id`, `product_id`, `warehouse_id`, `quantity_on_hand`, `quantity_reserved`) VALUES
+('stk-test-00000000-0000-0000-0000-000000000001', 'TEST-PRODUCT-001', 'TEST-WAREHOUSE-001', 10000, 0);
+
+
 SET FOREIGN_KEY_CHECKS = 1;

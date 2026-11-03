@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,19 +9,17 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func (r *RabbitMQ) ConsumeOrderCreated(db *sqlx.DB) error {
-	if db == nil {
-		return fmt.Errorf("database identity tidak tersedia")
-	}
+type OrderEventHandler func(ctx context.Context, payload []byte) error
 
-	// Batasi pesan yang belum di-ACK untuk mengendalikan penggunaan memori.
+func (r *RabbitMQ) ConsumeOrderEvents(handler OrderEventHandler, identityAuditDB *sqlx.DB) error {
+	// Batasi pesan unacknowledged sesuai QoS (prefetch=10) sesuai Laporan Tugas 3 Bagian III.2
 	if err := r.Channel.Qos(10, 0, false); err != nil {
 		return fmt.Errorf("gagal mengatur QoS: %w", err)
 	}
 
 	messages, err := r.Channel.Consume(
 		QueueName,
-		"order-consumer",
+		"inventory-order-consumer",
 		false, // Manual ACK
 		false,
 		false,
@@ -35,66 +34,52 @@ func (r *RabbitMQ) ConsumeOrderCreated(db *sqlx.DB) error {
 		for message := range messages {
 			var event OrderCreatedEvent
 
-			// Pesan dengan format JSON yang rusak masuk ke DLQ.
+			// Validasi 1: Format JSON (jika corrupt, NACK tanpa requeue -> otomatis dialihkan ke DLQ)
 			if err := json.Unmarshal(message.Body, &event); err != nil {
-				log.Printf("JSON tidak valid, mengirim ke DLQ: %v", err)
-				if nackErr := message.Nack(false, false); nackErr != nil {
-					log.Printf("Gagal NACK pesan: %v", nackErr)
-				}
+				log.Printf("[DLQ Alert] JSON tidak valid, mengalihkan ke DLQ: %v", err)
+				_ = message.Nack(false, false)
 				continue
 			}
 
-			// Tolak payload yang tidak memenuhi kontrak event.
+			// Validasi 2: Kontrak Skema Event (Poison Pill Mitigation)
 			if event.EventID == "" ||
-				event.EventType != "OrderCreated" ||
 				event.Data.ReferenceOrderID == "" ||
 				event.Data.ProductID == "" ||
 				event.Data.ReservedQuantity <= 0 {
-				log.Printf("Payload OrderCreated tidak valid, mengirim ke DLQ")
-				if nackErr := message.Nack(false, false); nackErr != nil {
-					log.Printf("Gagal NACK pesan: %v", nackErr)
+				log.Printf("[DLQ Alert] Payload OrderCreated cacat kontrak, mengalihkan ke DLQ: %s", event.EventID)
+				_ = message.Nack(false, false)
+				continue
+			}
+
+			// Jalankan handler bisnis Inventory Consumer (Idempotensi & Reservasi Stok)
+			if handler != nil {
+				ctx := context.Background()
+				if err := handler(ctx, message.Body); err != nil {
+					log.Printf("Gagal memproses event di Inventory: %v", err)
+					// Jika gagal karena stok tidak mencukupi atau payload tidak valid, kirim ke DLQ
+					_ = message.Nack(false, false)
+					continue
 				}
-				continue
 			}
 
-			// Simpan event dalam transaksi database.
-			tx, err := db.Beginx()
-			if err != nil {
-				log.Printf("Gagal memulai transaksi: %v", err)
-				_ = message.Nack(false, true)
-				continue
+			// Audit backward compatibility jika tabel uji coba identity masih aktif
+			if identityAuditDB != nil {
+				_, _ = identityAuditDB.Exec(`
+					INSERT IGNORE INTO rabbitmq_processed_events
+						(event_id, event_type, order_id, product_id, quantity)
+					VALUES (?, ?, ?, ?, ?)
+				`,
+					event.EventID,
+					event.EventType,
+					event.Data.ReferenceOrderID,
+					event.Data.ProductID,
+					event.Data.ReservedQuantity,
+				)
 			}
 
-			// INSERT IGNORE membuat pemrosesan ulang event_id yang sama
-			// tidak menghasilkan catatan duplikat.
-			_, err = tx.Exec(`
-				INSERT IGNORE INTO rabbitmq_processed_events
-					(event_id, event_type, order_id, product_id, quantity)
-				VALUES (?, ?, ?, ?, ?)
-			`,
-				event.EventID,
-				event.EventType,
-				event.Data.ReferenceOrderID,
-				event.Data.ProductID,
-				event.Data.ReservedQuantity,
-			)
-
-			if err != nil {
-				_ = tx.Rollback()
-				log.Printf("Gagal menyimpan event ke database: %v", err)
-				_ = message.Nack(false, true)
-				continue
-			}
-
-			if err := tx.Commit(); err != nil {
-				log.Printf("Gagal commit transaksi: %v", err)
-				_ = message.Nack(false, true)
-				continue
-			}
-
-			// ACK hanya setelah transaksi database berhasil di-commit.
+			// ACK hanya setelah transaksi database inventaris berhasil
 			if err := message.Ack(false); err != nil {
-				log.Printf("Database sudah commit, tetapi ACK gagal: %v", err)
+				log.Printf("Transaksi sukses tapi ACK RabbitMQ gagal: %v", err)
 				continue
 			}
 
@@ -109,4 +94,8 @@ func (r *RabbitMQ) ConsumeOrderCreated(db *sqlx.DB) error {
 	}()
 
 	return nil
+}
+
+func (r *RabbitMQ) ConsumeOrderCreated(db *sqlx.DB) error {
+	return r.ConsumeOrderEvents(nil, db)
 }

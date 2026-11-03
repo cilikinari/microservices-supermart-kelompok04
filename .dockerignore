@@ -1,0 +1,30 @@
+# Git version control
+.git
+.gitignore
+
+# Environment & credentials
+.env
+.env.*
+*.pem
+*.key
+
+# Local dependencies & build artifacts
+node_modules
+dist
+tmp
+bin
+*.exe
+*.dll
+*.so
+
+# IDE & system
+.vscode
+.idea
+.DS_Store
+
+# Reports & media
+reports
+*.png
+*.jpg
+*.pdf
+

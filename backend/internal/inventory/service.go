@@ -10,6 +10,7 @@ import (
 
 type Service interface {
 	GetStocks(warehouseID string) ([]InventoryStock, error)
+	GetStockByProductAndWarehouse(productID, warehouseID string) (*InventoryStock, error)
 	AdjustStock(stockID string, req AdjustStockRequest) error
 	ReserveStock(productID, warehouseID, orderID string, qty int) error
 	ReleaseStock(orderID string) error
@@ -33,6 +34,10 @@ func NewService(repo Repository) Service {
 
 func (s *inventoryService) GetStocks(warehouseID string) ([]InventoryStock, error) {
 	return s.repo.GetStocks(warehouseID)
+}
+
+func (s *inventoryService) GetStockByProductAndWarehouse(productID, warehouseID string) (*InventoryStock, error) {
+	return s.repo.GetStockByProductAndWarehouse(productID, warehouseID)
 }
 
 func (s *inventoryService) AdjustStock(stockID string, req AdjustStockRequest) error {

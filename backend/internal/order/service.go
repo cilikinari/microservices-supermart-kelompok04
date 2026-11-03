@@ -1,8 +1,10 @@
 package order
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,6 +60,20 @@ func (s *orderService) GetCart(customerID string) (*Cart, error) {
 		return nil, err
 	}
 
+	// Enrich detail produk dari domain Catalog (mencegah SQL cross-database join)
+	for i := range items {
+		prod, _, _, err := s.catalogSvc.GetProductByID(items[i].ProductID)
+		if err == nil && prod != nil {
+			items[i].ProductTitle = prod.Title
+			items[i].ProductSKU = prod.SKU
+			items[i].ProductPrice = prod.BasePrice
+			items[i].Subtotal = float64(items[i].Quantity) * prod.BasePrice
+			if prod.ImageURL != nil {
+				items[i].ImageURL = *prod.ImageURL
+			}
+		}
+	}
+
 	cart.Items = items
 	return cart, nil
 }
@@ -109,10 +125,12 @@ func (s *orderService) Checkout(customerID string, req CheckoutRequest) (*Order,
 	for i, item := range cart.Items {
 		grossTotal += item.Subtotal
 		orderItems[i] = OrderItem{
-			ProductID: item.ProductID,
-			Quantity:  item.Quantity,
-			UnitPrice: item.ProductPrice,
-			Subtotal:  item.Subtotal,
+			ProductID:    item.ProductID,
+			ProductTitle: item.ProductTitle,
+			ProductSKU:   item.ProductSKU,
+			Quantity:     item.Quantity,
+			UnitPrice:    item.ProductPrice,
+			Subtotal:     item.Subtotal,
 		}
 	}
 
@@ -156,20 +174,41 @@ func (s *orderService) Checkout(customerID string, req CheckoutRequest) (*Order,
 		ShippingCost: shippingFee,
 	}
 
-	for _, item := range orderItems {
-		if err := s.inventorySvc.ReserveStock(
-			item.ProductID, req.WarehouseID, orderID, item.Quantity,
-		); err != nil {
-			return nil, fmt.Errorf("failed to reserve stock for item %s: %w", item.ProductID, err)
+	// 1. Validasi ketersediaan stok via gRPC Client (sinkron) sesuai perancangan Tugas 2
+	if s.inventoryClient != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		for _, item := range orderItems {
+			avail, err := s.inventoryClient.CheckStock(ctx, item.ProductID, req.WarehouseID)
+			if err == nil && avail < int32(item.Quantity) {
+				return nil, fmt.Errorf("stok tidak mencukupi untuk produk %s (tersedia: %d, dibutuhkan: %d)", item.ProductID, avail, item.Quantity)
+			}
 		}
 	}
 
+	// 2. Kontrol Reservasi Stok:
+	// Jika RabbitMQ aktif, reservasi stok didelegasikan secara asinkron ke Inventory Consumer
+	// via event OrderCreated (mengeliminasi Double Reservation sesuai Tugas 3).
+	// Jika RabbitMQ tidak aktif, lakukan reservasi sinkron in-memory sebagai fallback.
+	if s.rabbitMQ == nil {
+		for _, item := range orderItems {
+			if err := s.inventorySvc.ReserveStock(
+				item.ProductID, req.WarehouseID, orderID, item.Quantity,
+			); err != nil {
+				return nil, fmt.Errorf("failed to reserve stock for item %s: %w", item.ProductID, err)
+			}
+		}
+	}
+
+	// 3. Simpan Pesanan ke Database Order
 	if err := s.repo.CreateOrder(newOrder, orderItems, shipping); err != nil {
-		_ = s.inventorySvc.ReleaseStock(orderID)
+		if s.rabbitMQ == nil {
+			_ = s.inventorySvc.ReleaseStock(orderID)
+		}
 		return nil, fmt.Errorf("failed to create order: %w", err)
 	}
 
-	// Publish event setelah order berhasil disimpan.
+	// 4. Publikasikan Event OrderCreated ke RabbitMQ (asinkron) untuk reservasi stok oleh Inventory
 	if s.rabbitMQ != nil {
 		for _, item := range orderItems {
 			if err := s.rabbitMQ.PublishOrderCreated(
@@ -178,7 +217,7 @@ func (s *orderService) Checkout(customerID string, req CheckoutRequest) (*Order,
 				req.WarehouseID,
 				item.Quantity,
 			); err != nil {
-				return nil, fmt.Errorf("order tersimpan, tetapi gagal publish event: %w", err)
+				log.Printf("Peringatan: Order %s tersimpan, tetapi gagal publish event RabbitMQ: %v", orderID, err)
 			}
 		}
 	}

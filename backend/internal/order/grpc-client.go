@@ -27,17 +27,26 @@ func NewInventoryClient(grpcAddress string) *InventoryClient {
 	return &InventoryClient{client: client}
 }
 
-// Contoh method Order memanggil gRPC Inventory
-func (c *InventoryClient) CheckStock(ctx context.Context, productID string) (int32, error) {
+// CheckStock memanggil RPC GetStockItem untuk memeriksa sisa stok tersedia (on_hand - reserved)
+func (c *InventoryClient) CheckStock(ctx context.Context, productID, warehouseID string) (int32, error) {
+	if c == nil || c.client == nil {
+		return 0, nil
+	}
 	req := &inventorypb.GetStockItemRequest{
-		ProductId: productID,
+		ProductId:   productID,
+		WarehouseId: warehouseID,
 	}
 
-	// Panggil RPC GetStockItem
 	res, err := c.client.GetStockItem(ctx, req)
 	if err != nil {
 		return 0, err
 	}
 
-	return res.GetItem().GetQuantityOnHand(), nil
+	item := res.GetItem()
+	if item == nil {
+		return 0, nil
+	}
+
+	available := item.GetQuantityOnHand() - item.GetQuantityReserved()
+	return available, nil
 }

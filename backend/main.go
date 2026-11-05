@@ -106,8 +106,9 @@ func main() {
 	catalogSvc := catalog.NewService(catalogRepo)
 	inventorySvc := inventory.NewService(inventoryRepo)
 
-	// Inisialisasi gRPC Client untuk Inventory (Digunakan oleh Order)
-	grpcInventoryClient := order.NewInventoryClient("localhost:50051")
+	// Inisialisasi gRPC Client untuk Inventory (Disediakan untuk domain Catalog)
+	grpcInventoryClient := catalog.NewInventoryClient("localhost:50051")
+	_ = grpcInventoryClient
 
 	// Inisialisasi Real Consumer untuk domain Inventory
 	inventoryConsumer := inventory.NewInventoryConsumer(inventoryDB)
@@ -126,8 +127,8 @@ func main() {
 		}
 	}
 
-	// Passing grpcInventoryClient ke Order Service
-	orderSvc := order.NewService(orderRepo, catalogSvc, inventorySvc, grpcInventoryClient)
+	// Inisialisasi Order Service (Murni Event-Driven via RabbitMQ, tanpa gRPC)
+	orderSvc := order.NewService(orderRepo, catalogSvc, inventorySvc)
 	if rabbitMQ != nil {
 		orderSvc.SetRabbitMQ(rabbitMQ)
 	}

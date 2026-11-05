@@ -1,7 +1,6 @@
 package order
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -29,19 +28,17 @@ type Service interface {
 }
 
 type orderService struct {
-	repo            Repository
-	catalogSvc      catalog.Service
-	inventorySvc    inventory.Service
-	inventoryClient *InventoryClient
-	rabbitMQ        *messaging.RabbitMQ
+	repo         Repository
+	catalogSvc   catalog.Service
+	inventorySvc inventory.Service
+	rabbitMQ     *messaging.RabbitMQ
 }
 
-func NewService(repo Repository, catalogSvc catalog.Service, inventorySvc inventory.Service, inventoryClient *InventoryClient) Service {
+func NewService(repo Repository, catalogSvc catalog.Service, inventorySvc inventory.Service) Service {
 	return &orderService{
-		repo:            repo,
-		catalogSvc:      catalogSvc,
-		inventorySvc:    inventorySvc,
-		inventoryClient: inventoryClient,
+		repo:         repo,
+		catalogSvc:   catalogSvc,
+		inventorySvc: inventorySvc,
 	}
 }
 
@@ -174,22 +171,11 @@ func (s *orderService) Checkout(customerID string, req CheckoutRequest) (*Order,
 		ShippingCost: shippingFee,
 	}
 
-	// 1. Validasi ketersediaan stok via gRPC Client (sinkron) sesuai perancangan Tugas 2
-	if s.inventoryClient != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		for _, item := range orderItems {
-			avail, err := s.inventoryClient.CheckStock(ctx, item.ProductID, req.WarehouseID)
-			if err == nil && avail < int32(item.Quantity) {
-				return nil, fmt.Errorf("stok tidak mencukupi untuk produk %s (tersedia: %d, dibutuhkan: %d)", item.ProductID, avail, item.Quantity)
-			}
-		}
-	}
-
-	// 2. Kontrol Reservasi Stok:
-	// Jika RabbitMQ aktif, reservasi stok didelegasikan secara asinkron ke Inventory Consumer
-	// via event OrderCreated (mengeliminasi Double Reservation sesuai Tugas 3).
-	// Jika RabbitMQ tidak aktif, lakukan reservasi sinkron in-memory sebagai fallback.
+	// 1. Kontrol Reservasi Stok (Arsitektur Asinkron / Event-Driven via RabbitMQ):
+	// Sesuai perancangan Tugas 3, Order Service TIDAK mengunci stok secara sinkron.
+	// Tugas reservasi stok sepenuhnya didelegasikan secara asinkron ke Inventory Consumer
+	// melalui event OrderCreated yang diterbitkan ke RabbitMQ.
+	// (Jika RabbitMQ tidak aktif/mati saat dev lokal, gunakan fallback reservasi sinkron).
 	if s.rabbitMQ == nil {
 		for _, item := range orderItems {
 			if err := s.inventorySvc.ReserveStock(
@@ -200,7 +186,7 @@ func (s *orderService) Checkout(customerID string, req CheckoutRequest) (*Order,
 		}
 	}
 
-	// 3. Simpan Pesanan ke Database Order
+	// 2. Simpan Pesanan ke Database Order dengan status awal AWAITING_PAYMENT
 	if err := s.repo.CreateOrder(newOrder, orderItems, shipping); err != nil {
 		if s.rabbitMQ == nil {
 			_ = s.inventorySvc.ReleaseStock(orderID)
@@ -208,7 +194,7 @@ func (s *orderService) Checkout(customerID string, req CheckoutRequest) (*Order,
 		return nil, fmt.Errorf("failed to create order: %w", err)
 	}
 
-	// 4. Publikasikan Event OrderCreated ke RabbitMQ (asinkron) untuk reservasi stok oleh Inventory
+	// 3. Publikasikan Event OrderCreated ke RabbitMQ (asinkron) untuk reservasi stok oleh Inventory
 	if s.rabbitMQ != nil {
 		for _, item := range orderItems {
 			if err := s.rabbitMQ.PublishOrderCreated(

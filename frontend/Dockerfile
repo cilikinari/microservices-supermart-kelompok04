@@ -23,8 +23,10 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Salin artefak statis HTML/JS/CSS HANYA dari builder stage
 COPY --from=builder /app/dist/frontend/browser /usr/share/nginx/html
 
-# Hardening: Jalankan Nginx sebagai non-root jika memungkinkan atau amankan permission
-RUN touch /var/run/nginx.pid && \
+# Hardening: Jalankan Nginx sebagai non-root dengan kemampuan bind port 80
+RUN apk add --no-cache libcap && \
+    setcap 'cap_net_bind_service=+ep' /usr/sbin/nginx && \
+    touch /var/run/nginx.pid && \
     chown -R nginx:nginx /var/run/nginx.pid /usr/share/nginx/html /var/cache/nginx /var/log/nginx
 
 USER nginx

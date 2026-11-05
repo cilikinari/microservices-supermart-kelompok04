@@ -235,14 +235,13 @@ func (r *mysqlRepository) GetOrders(customerID, statusID string) ([]Order, error
 		SELECT o.id, o.order_number, o.customer_id, o.shipping_address_id, o.order_status_id, o.warehouse_id,
 		       o.total_gross_amount, o.discount_amount, o.tax_amount, o.shipping_fee, o.total_net_amount, o.created_at,
 		       os.status_code, os.status_name,
-		       u.full_name AS customer_name, u.email AS customer_email,
-		       COALESCE(w.warehouse_name, 'Gudang Utama') AS warehouse_name,
-		       CONCAT(COALESCE(ua.street_address, ''), ', ', COALESCE(ua.city, '')) AS shipping_address
+		       COALESCE(osd.recipient_name, o.customer_id) AS customer_name,
+		       '' AS customer_email,
+		       'Gudang Utama' AS warehouse_name,
+		       COALESCE(osd.shipping_address, '') AS shipping_address
 		FROM orders o
 		JOIN order_statuses os ON o.order_status_id = os.id
-		JOIN users u ON o.customer_id = u.id
-		LEFT JOIN warehouses w ON o.warehouse_id = w.id
-		LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
+		LEFT JOIN order_shipping_details osd ON o.id = osd.order_id
 	`
 	args := []interface{}{}
 	whereClauses := []string{}
@@ -271,14 +270,13 @@ func (r *mysqlRepository) GetOrderByID(id string) (*Order, error) {
 		SELECT o.id, o.order_number, o.customer_id, o.shipping_address_id, o.order_status_id, o.warehouse_id,
 		       o.total_gross_amount, o.discount_amount, o.tax_amount, o.shipping_fee, o.total_net_amount, o.created_at,
 		       os.status_code, os.status_name,
-		       u.full_name AS customer_name, u.email AS customer_email,
-		       COALESCE(w.warehouse_name, 'Gudang Utama') AS warehouse_name,
-		       CONCAT(COALESCE(ua.street_address, ''), ', ', COALESCE(ua.city, '')) AS shipping_address
+		       COALESCE(osd.recipient_name, o.customer_id) AS customer_name,
+		       '' AS customer_email,
+		       'Gudang Utama' AS warehouse_name,
+		       COALESCE(osd.shipping_address, '') AS shipping_address
 		FROM orders o
 		JOIN order_statuses os ON o.order_status_id = os.id
-		JOIN users u ON o.customer_id = u.id
-		LEFT JOIN warehouses w ON o.warehouse_id = w.id
-		LEFT JOIN user_addresses ua ON o.shipping_address_id = ua.id
+		LEFT JOIN order_shipping_details osd ON o.id = osd.order_id
 		WHERE o.id = ? LIMIT 1
 	`
 	var o Order
@@ -328,9 +326,8 @@ func (r *mysqlRepository) GetOrderStatusHistories(orderID string) ([]OrderStatus
 func (r *mysqlRepository) GetOrderNotes(orderID string) ([]OrderNote, error) {
 	query := `
 		SELECT onote.id, onote.order_id, onote.author_user_id, onote.note_content, onote.created_at,
-		       u.full_name AS author_name
+		       onote.author_user_id AS author_name
 		FROM order_notes onote
-		JOIN users u ON onote.author_user_id = u.id
 		WHERE onote.order_id = ?
 		ORDER BY onote.created_at ASC
 	`

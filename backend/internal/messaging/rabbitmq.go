@@ -2,20 +2,21 @@ package messaging
 
 import (
 	"fmt"
+	"os"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 const (
-	RabbitMQURL     = "amqp://supermart:supermart123@localhost:5672/"
-	ExchangeName    = "supermart.events"
-	QueueName       = "inventory_stock_reservation_queue"
-	LegacyQueueName = "order.created"
-	RoutingKey      = "order.event.placed"
-	BindingKey      = "order.event.*"
-	DLXExchangeName = "supermart.dlx"
-	DLQQueueName    = "inventory_stock_reservation_queue.dlq"
-	DLQRoutingKey   = "order.event.dead"
+	DefaultRabbitMQURL = "amqp://supermart:supermart123@localhost:5672/"
+	ExchangeName       = "supermart.events"
+	QueueName          = "inventory_stock_reservation_queue"
+	LegacyQueueName    = "order.created"
+	RoutingKey         = "order.event.placed"
+	BindingKey         = "order.event.*"
+	DLXExchangeName    = "supermart.dlx"
+	DLQQueueName       = "inventory_stock_reservation_queue.dlq"
+	DLQRoutingKey      = "order.event.dead"
 )
 
 type RabbitMQ struct {
@@ -23,10 +24,34 @@ type RabbitMQ struct {
 	Channel    *amqp.Channel
 }
 
+// GetRabbitMQURL membaca konfigurasi environment jika berjalan di kontainer Docker atau fallback ke localhost
+func GetRabbitMQURL() string {
+	if url := os.Getenv("RABBITMQ_URL"); url != "" {
+		return url
+	}
+	host := "localhost"
+	if h := os.Getenv("RABBITMQ_HOST"); h != "" {
+		host = h
+	}
+	port := "5672"
+	if p := os.Getenv("RABBITMQ_PORT"); p != "" {
+		port = p
+	}
+	user := "supermart"
+	if u := os.Getenv("RABBITMQ_USER"); u != "" {
+		user = u
+	}
+	pass := "supermart123"
+	if pwd := os.Getenv("RABBITMQ_PASSWORD"); pwd != "" {
+		pass = pwd
+	}
+	return fmt.Sprintf("amqp://%s:%s@%s:%s/", user, pass, host, port)
+}
+
 func ConnectRabbitMQ() (*RabbitMQ, error) {
-	conn, err := amqp.Dial(RabbitMQURL)
+	conn, err := amqp.Dial(GetRabbitMQURL())
 	if err != nil {
-		return nil, fmt.Errorf("gagal koneksi ke RabbitMQ: %w", err)
+		return nil, fmt.Errorf("gagal koneksi ke RabbitMQ (%s): %w", GetRabbitMQURL(), err)
 	}
 
 	ch, err := conn.Channel()

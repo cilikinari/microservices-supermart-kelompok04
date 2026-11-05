@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,6 +61,7 @@ func (c *InventoryConsumer) HandleOrderPlaced(ctx context.Context, payload []byt
 	}
 	if claimed == 0 {
 		// Event duplikat sudah pernah diproses. Selesai tanpa error (Idempotent success)
+		log.Printf("[Idempotency] Event %s (order: %s) sudah pernah diproses. Melewati mutasi stok ganda.", event.EventID, event.Data.OrderID)
 		return nil
 	}
 

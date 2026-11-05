@@ -6,6 +6,8 @@ RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
 
+ENV GOTOOLCHAIN=auto
+
 # Optimasi Layer Cache: Salin manifes dependensi terlebih dahulu
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
@@ -34,7 +36,7 @@ COPY --from=builder /bin/supermart-backend /app/supermart-backend
 # Terapkan Principle of Least Privilege: jalankan aplikasi sebagai user non-root (UID 65532)
 USER nonroot:nonroot
 
-EXPOSE 3000
+EXPOSE 3000 50051 50052
 
 ENTRYPOINT ["/app/supermart-backend"]
 

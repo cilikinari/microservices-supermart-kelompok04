@@ -58,9 +58,11 @@ func main() {
 	identityDB := connectDatabase("identity", cfg.IdentityDB)
 	catalogDB := connectDatabase("catalog", cfg.CatalogDB)
 	inventoryDB := connectDatabase("inventory", cfg.InventoryDB)
+	orderDB := connectDatabase("order", cfg.OrderDB)
 	defer closeDatabase(identityDB)
 	defer closeDatabase(catalogDB)
 	defer closeDatabase(inventoryDB)
+	defer closeDatabase(orderDB)
 
 	app := fiber.New(fiber.Config{
 		AppName:      "PT Nusantara SuperMart Indonesia API v1.0",
@@ -72,6 +74,15 @@ func main() {
 	app.Use(recover.New())
 	app.Use(middleware.SetupCORS(cfg))
 
+	// Root Welcome Route
+	app.Get("/", func(c fiber.Ctx) error {
+		return response.Success(c, fiber.StatusOK, "PT Nusantara SuperMart API is operational", fiber.Map{
+			"status":  "running",
+			"health":  "/api/v1/health",
+			"version": "1.0.0",
+		})
+	})
+
 	// Base API Group
 	api := app.Group("/api/v1")
 
@@ -80,7 +91,8 @@ func main() {
 		dbStatus := "healthy"
 		if identityDB == nil || identityDB.Ping() != nil ||
 			catalogDB == nil || catalogDB.Ping() != nil ||
-			inventoryDB == nil || inventoryDB.Ping() != nil {
+			inventoryDB == nil || inventoryDB.Ping() != nil ||
+			orderDB == nil || orderDB.Ping() != nil {
 			dbStatus = "unreachable"
 		}
 		return response.Success(c, fiber.StatusOK, "Nusantara SuperMart Monolith API is operational", fiber.Map{
@@ -90,13 +102,12 @@ func main() {
 		})
 	})
 
-	// Domain Repositories
+	// Domain Repositories (Database-per-Service)
 	authRepo := auth.NewRepository(identityDB)
 	catalogRepo := catalog.NewRepository(catalogDB)
 	inventoryRepo := inventory.NewRepository(inventoryDB)
-	// These domains do not have dedicated schemas in the current split.
-	orderRepo := order.NewRepository(identityDB)
-	paymentRepo := payment.NewRepository(identityDB)
+	orderRepo := order.NewRepository(orderDB)
+	paymentRepo := payment.NewRepository(orderDB)
 	promotionRepo := promotion.NewRepository(identityDB)
 	logisticsRepo := logistics.NewRepository(identityDB)
 	procurementRepo := procurement.NewRepository(identityDB)
@@ -126,7 +137,7 @@ func main() {
 	} else {
 		defer rabbitMQ.Close()
 		log.Println("RabbitMQ connected successfully")
-		if err := rabbitMQ.ConsumeOrderEvents(inventoryConsumer.HandleOrderPlaced, identityDB); err != nil {
+		if err := rabbitMQ.ConsumeOrderEvents(inventoryConsumer.HandleOrderPlaced, orderDB); err != nil {
 			log.Printf("WARNING: Gagal menjalankan consumer RabbitMQ: %v", err)
 		} else {
 			log.Println("RabbitMQ Inventory Consumer started successfully")

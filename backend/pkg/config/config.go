@@ -13,6 +13,7 @@ type Config struct {
 	IdentityDB  DatabaseConfig
 	CatalogDB   DatabaseConfig
 	InventoryDB DatabaseConfig
+	OrderDB     DatabaseConfig
 	JWTSecret   string
 	JWTExpiry   string
 	CORSOrigins []string
@@ -27,13 +28,14 @@ type DatabaseConfig struct {
 }
 
 func LoadConfig() *Config {
-	_ = godotenv.Load()
+	_ = godotenv.Load("../.env", ".env")
 
 	appEnv := getEnv("APP_ENV", "development")
 	appPort := getEnv("APP_PORT", "3000")
-	identityDB := loadDatabaseConfig("IDENTITY_DB", "127.0.0.1", "3306", "identity_service_db", "identity_admin", "identity_secret_pass")
+	identityDB := loadDatabaseConfig("IDENTITY_DB", "127.0.0.1", "3309", "identity_service_db", "identity_admin", "identity_secret_pass")
 	catalogDB := loadDatabaseConfig("CATALOG_DB", "127.0.0.1", "3307", "catalog_service_db", "catalog_admin", "catalog_secret_pass")
 	inventoryDB := loadDatabaseConfig("INVENTORY_DB", "127.0.0.1", "3308", "inventory_service_db", "inventory_admin", "inventory_secret_pass")
+	orderDB := loadDatabaseConfig("ORDER_DB", "127.0.0.1", "3310", "order_service_db", "order_admin", "order_secret_pass")
 	jwtSecret := getEnv("JWT_SECRET", "supermart-secret-key-for-nusantara-course-2026")
 	jwtExpiry := getEnv("JWT_EXPIRY", "24h")
 	corsRaw := getEnv("CORS_ORIGINS", "http://localhost:4200,http://127.0.0.1:4200,http://localhost:3000")
@@ -49,6 +51,7 @@ func LoadConfig() *Config {
 		IdentityDB:  identityDB,
 		CatalogDB:   catalogDB,
 		InventoryDB: inventoryDB,
+		OrderDB:     orderDB,
 		JWTSecret:   jwtSecret,
 		JWTExpiry:   jwtExpiry,
 		CORSOrigins: corsOrigins,

@@ -1,21 +1,20 @@
-
 services:
   identity-db:
     image: mysql:8.0
     container_name: supermart-identity-db
     restart: always
     environment:
-      MYSQL_DATABASE: identity_service_db
-      MYSQL_USER: identity_admin
-      MYSQL_PASSWORD: identity_secret_pass
-      MYSQL_ROOT_PASSWORD: root_identity_pass
+      MYSQL_DATABASE: ${IDENTITY_DB_NAME:-identity_service_db}
+      MYSQL_USER: ${IDENTITY_DB_USER:-identity_admin}
+      MYSQL_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_secret_pass}
+      MYSQL_ROOT_PASSWORD: ${IDENTITY_DB_ROOT_PASSWORD:-root_identity_pass}
     ports:
-      - "3309:3306"
+      - "${IDENTITY_DB_EXPOSE_PORT:-3309}:3306"
     volumes:
       - identity_db_data:/var/lib/mysql
       - ./init-scripts/identity:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "identity_admin", "-pidentity_secret_pass"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${IDENTITY_DB_USER:-identity_admin}", "-p${IDENTITY_DB_PASSWORD:-identity_secret_pass}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -27,17 +26,17 @@ services:
     container_name: supermart-catalog-db
     restart: always
     environment:
-      MYSQL_DATABASE: catalog_service_db
-      MYSQL_USER: catalog_admin
-      MYSQL_PASSWORD: catalog_secret_pass
-      MYSQL_ROOT_PASSWORD: root_catalog_pass
+      MYSQL_DATABASE: ${CATALOG_DB_NAME:-catalog_service_db}
+      MYSQL_USER: ${CATALOG_DB_USER:-catalog_admin}
+      MYSQL_PASSWORD: ${CATALOG_DB_PASSWORD:-catalog_secret_pass}
+      MYSQL_ROOT_PASSWORD: ${CATALOG_DB_ROOT_PASSWORD:-root_catalog_pass}
     ports:
-      - "3307:3306"
+      - "${CATALOG_DB_EXPOSE_PORT:-3307}:3306"
     volumes:
       - catalog_db_data:/var/lib/mysql
       - ./init-scripts/catalog:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "catalog_admin", "-pcatalog_secret_pass"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${CATALOG_DB_USER:-catalog_admin}", "-p${CATALOG_DB_PASSWORD:-catalog_secret_pass}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -49,17 +48,39 @@ services:
     container_name: supermart-inventory-db
     restart: always
     environment:
-      MYSQL_DATABASE: inventory_service_db
-      MYSQL_USER: inventory_admin
-      MYSQL_PASSWORD: inventory_secret_pass
-      MYSQL_ROOT_PASSWORD: root_inventory_pass
+      MYSQL_DATABASE: ${INVENTORY_DB_NAME:-inventory_service_db}
+      MYSQL_USER: ${INVENTORY_DB_USER:-inventory_admin}
+      MYSQL_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_secret_pass}
+      MYSQL_ROOT_PASSWORD: ${INVENTORY_DB_ROOT_PASSWORD:-root_inventory_pass}
     ports:
-      - "3308:3306"
+      - "${INVENTORY_DB_EXPOSE_PORT:-3308}:3306"
     volumes:
       - inventory_db_data:/var/lib/mysql
       - ./init-scripts/inventory:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "inventory_admin", "-pinventory_secret_pass"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${INVENTORY_DB_USER:-inventory_admin}", "-p${INVENTORY_DB_PASSWORD:-inventory_secret_pass}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - supermart-network
+
+  order-db:
+    image: mysql:8.0
+    container_name: supermart-order-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${ORDER_DB_NAME:-order_service_db}
+      MYSQL_USER: ${ORDER_DB_USER:-order_admin}
+      MYSQL_PASSWORD: ${ORDER_DB_PASSWORD:-order_secret_pass}
+      MYSQL_ROOT_PASSWORD: ${ORDER_DB_ROOT_PASSWORD:-root_order_pass}
+    ports:
+      - "${ORDER_DB_EXPOSE_PORT:-3310}:3306"
+    volumes:
+      - order_db_data:/var/lib/mysql
+      - ./init-scripts/order:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${ORDER_DB_USER:-order_admin}", "-p${ORDER_DB_PASSWORD:-order_secret_pass}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -71,11 +92,11 @@ services:
     container_name: supermart-rabbitmq
     restart: unless-stopped
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: supermart
-      RABBITMQ_DEFAULT_PASS: supermart123
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-supermart}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-supermart123}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -83,6 +104,73 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - supermart-network
+
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: supermart-backend
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+      - "50051:50051"
+      - "50052:50052"
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - APP_PORT=${APP_PORT:-3000}
+      - IDENTITY_DB_HOST=identity-db
+      - IDENTITY_DB_PORT=3306
+      - IDENTITY_DB_NAME=${IDENTITY_DB_NAME:-identity_service_db}
+      - IDENTITY_DB_USER=${IDENTITY_DB_USER:-identity_admin}
+      - IDENTITY_DB_PASSWORD=${IDENTITY_DB_PASSWORD:-identity_secret_pass}
+      - CATALOG_DB_HOST=catalog-db
+      - CATALOG_DB_PORT=3306
+      - CATALOG_DB_NAME=${CATALOG_DB_NAME:-catalog_service_db}
+      - CATALOG_DB_USER=${CATALOG_DB_USER:-catalog_admin}
+      - CATALOG_DB_PASSWORD=${CATALOG_DB_PASSWORD:-catalog_secret_pass}
+      - INVENTORY_DB_HOST=inventory-db
+      - INVENTORY_DB_PORT=3306
+      - INVENTORY_DB_NAME=${INVENTORY_DB_NAME:-inventory_service_db}
+      - INVENTORY_DB_USER=${INVENTORY_DB_USER:-inventory_admin}
+      - INVENTORY_DB_PASSWORD=${INVENTORY_DB_PASSWORD:-inventory_secret_pass}
+      - ORDER_DB_HOST=order-db
+      - ORDER_DB_PORT=3306
+      - ORDER_DB_NAME=${ORDER_DB_NAME:-order_service_db}
+      - ORDER_DB_USER=${ORDER_DB_USER:-order_admin}
+      - ORDER_DB_PASSWORD=${ORDER_DB_PASSWORD:-order_secret_pass}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=${RABBITMQ_USER:-supermart}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-supermart123}
+      - JWT_SECRET=${JWT_SECRET:-supermart-secret-key-for-nusantara-course-2026}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:4200,http://localhost:80,http://127.0.0.1:4200,http://127.0.0.1:80}
+    depends_on:
+      identity-db:
+        condition: service_healthy
+      catalog-db:
+        condition: service_healthy
+      inventory-db:
+        condition: service_healthy
+      order-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - supermart-network
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    container_name: supermart-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "${FRONTEND_PORT:-4200}:80"
+    depends_on:
+      - backend
     networks:
       - supermart-network
 
@@ -95,4 +183,5 @@ volumes:
   identity_db_data:
   catalog_db_data:
   inventory_db_data:
+  order_db_data:
   rabbitmq_data:

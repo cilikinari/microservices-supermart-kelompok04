@@ -68,6 +68,20 @@ export interface ProductVariant {
   additional_price: number;
 }
 
+export interface ProductImage {
+  id: string;
+  product_id: string;
+  image_url: string;
+  is_primary: boolean;
+  display_order: number;
+}
+
+export interface ProductDetailData {
+  product: Product;
+  variants: ProductVariant[];
+  images: ProductImage[];
+}
+
 export interface ProductReview {
   id: string;
   product_id: string;

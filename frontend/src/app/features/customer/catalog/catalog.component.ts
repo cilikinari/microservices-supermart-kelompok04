@@ -2,15 +2,10 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
-import { HttpClient } from '@angular/common/http';
 import { Product, Category, Brand } from '../../../core/models/types';
+import { CatalogService } from '../../../core/services/catalog.service';
 import { CartService } from '../../../core/services/cart.service';
 import { AuthService } from '../../../core/services/auth.service';
-
-interface APIResponse<T> {
-  success: boolean;
-  data: T;
-}
 
 @Component({
   selector: 'app-catalog',
@@ -123,7 +118,7 @@ interface APIResponse<T> {
         <div class="product-grid">
           @for (product of products(); track product.id) {
             <div class="product-card card" [id]="'product-' + product.id">
-              <div class="card-img-wrap">
+              <div class="card-img-wrap cursor-pointer" [routerLink]="['/catalog', product.id]">
                 <img
                   [src]="product.image_url || 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=500'"
                   [alt]="product.title"
@@ -136,7 +131,7 @@ interface APIResponse<T> {
 
               <div class="card-body">
                 <span class="category-text">{{ product.category_name || 'Katalog Retail' }}</span>
-                <h3 class="product-title" [title]="product.title">{{ product.title }}</h3>
+                <h3 class="product-title cursor-pointer" [routerLink]="['/catalog', product.id]" [title]="product.title">{{ product.title }}</h3>
                 <p class="product-desc">{{ product.description }}</p>
 
                 <div class="product-meta">
@@ -325,6 +320,9 @@ interface APIResponse<T> {
       transform: translateY(-4px);
       box-shadow: var(--shadow-lg);
     }
+    .cursor-pointer {
+      cursor: pointer;
+    }
     .card-img-wrap {
       position: relative;
       width: 100%;
@@ -454,7 +452,7 @@ interface APIResponse<T> {
   `]
 })
 export class CatalogComponent implements OnInit {
-  private http = inject(HttpClient);
+  private catalogService = inject(CatalogService);
   private cartService = inject(CartService);
   auth = inject(AuthService);
 
@@ -473,8 +471,8 @@ export class CatalogComponent implements OnInit {
   }
 
   loadCategories() {
-    this.http.get<APIResponse<Category[]>>('/api/v1/catalog/categories').subscribe(res => {
-      if (res.success) {
+    this.catalogService.getCategories().subscribe(res => {
+      if (res.success && res.data) {
         this.categories.set(res.data);
       }
     });
@@ -482,14 +480,14 @@ export class CatalogComponent implements OnInit {
 
   loadProducts() {
     this.loading.set(true);
-    let url = `/api/v1/catalog/products?limit=24`;
-    if (this.searchQuery) url += `&search=${encodeURIComponent(this.searchQuery)}`;
-    if (this.selectedCategory) url += `&category_id=${this.selectedCategory}`;
-    if (this.sortBy) url += `&sort_by=${this.sortBy}`;
-
-    this.http.get<APIResponse<Product[]>>(url).subscribe({
+    this.catalogService.getProducts({
+      search: this.searchQuery || undefined,
+      category_id: this.selectedCategory || undefined,
+      sort_by: this.sortBy || undefined,
+      limit: 24
+    }).subscribe({
       next: res => {
-        if (res.success) {
+        if (res.success && res.data) {
           this.products.set(res.data);
         }
         this.loading.set(false);

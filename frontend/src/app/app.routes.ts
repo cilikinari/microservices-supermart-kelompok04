@@ -25,6 +25,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/customer/catalog/catalog.component').then(m => m.CatalogComponent)
       },
       {
+        path: 'catalog/:id',
+        loadComponent: () => import('./features/customer/catalog/product-detail/product-detail.component').then(m => m.ProductDetailComponent)
+      },
+      {
         path: 'cart',
         loadComponent: () => import('./features/customer/cart/cart.component').then(m => m.CartComponent),
         canActivate: [customerGuard]

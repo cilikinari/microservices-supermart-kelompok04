@@ -1,8 +1,8 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
-import { Product, Category, Brand, ApiResponse } from '../../../core/models/types';
+import { Product, Category, Brand } from '../../../core/models/types';
+import { CatalogService } from '../../../core/services/catalog.service';
 import { NotificationService } from '../../../core/services/notification.service';
 
 @Component({
@@ -101,13 +101,22 @@ import { NotificationService } from '../../../core/services/notification.service
                       }
                     </td>
                     <td class="text-right">
-                      <button 
-                        (click)="deleteProduct(p.id, p.title)" 
-                        class="btn btn-outline btn-sm text-danger"
-                        title="Hapus Produk"
-                      >
-                        🗑️ Hapus
-                      </button>
+                      <div class="flex justify-end gap-2">
+                        <button 
+                          (click)="openEditModal(p)" 
+                          class="btn btn-outline btn-sm text-primary"
+                          title="Edit Produk"
+                        >
+                          ✏️ Edit
+                        </button>
+                        <button 
+                          (click)="deleteProduct(p.id, p.title)" 
+                          class="btn btn-outline btn-sm text-danger"
+                          title="Hapus Produk"
+                        >
+                          🗑️ Hapus
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 }
@@ -117,12 +126,12 @@ import { NotificationService } from '../../../core/services/notification.service
         }
       </div>
 
-      <!-- Add Product Modal -->
+      <!-- Add / Edit Product Modal -->
       @if (showAddModal()) {
         <div class="modal-backdrop">
           <div class="modal-card">
             <div class="modal-header">
-              <h3>Tambah Produk Baru ke Katalog</h3>
+              <h3>{{ isEditMode() ? 'Edit Data Produk' : 'Tambah Produk Baru ke Katalog' }}</h3>
               <button (click)="closeAddModal()" class="close-btn">&times;</button>
             </div>
             <div class="modal-body">
@@ -136,6 +145,7 @@ import { NotificationService } from '../../../core/services/notification.service
                       name="sku" 
                       class="form-control" 
                       placeholder="SKU-BRG-001" 
+                      [disabled]="isEditMode()"
                       required
                     />
                   </div>
@@ -235,7 +245,7 @@ import { NotificationService } from '../../../core/services/notification.service
                 <div class="modal-footer">
                   <button type="button" (click)="closeAddModal()" class="btn btn-outline" [disabled]="submitting()">Batal</button>
                   <button type="submit" class="btn btn-primary" [disabled]="submitting() || !isFormValid()">
-                    @if (submitting()) { Menyimpan... } @else { Simpan Produk }
+                    @if (submitting()) { Menyimpan... } @else { {{ isEditMode() ? 'Perbarui Produk' : 'Simpan Produk' }} }
                   </button>
                 </div>
               </form>
@@ -334,7 +344,7 @@ import { NotificationService } from '../../../core/services/notification.service
   `]
 })
 export class CatalogMgmtComponent implements OnInit {
-  private http = inject(HttpClient);
+  private catalogService = inject(CatalogService);
   private notify = inject(NotificationService);
 
   products = signal<Product[]>([]);
@@ -344,6 +354,8 @@ export class CatalogMgmtComponent implements OnInit {
   loading = signal(true);
   submitting = signal(false);
   showAddModal = signal(false);
+  isEditMode = signal(false);
+  editingProductId = signal<string | null>(null);
   searchQuery = '';
 
   newProduct = {
@@ -366,13 +378,13 @@ export class CatalogMgmtComponent implements OnInit {
 
   loadProducts() {
     this.loading.set(true);
-    this.http.get<ApiResponse<Product[]>>('/api/v1/catalog/products?limit=100')
+    this.catalogService.getProducts({ limit: 100 })
       .subscribe({
         next: (res) => {
           this.products.set(res.data || []);
           this.loading.set(false);
         },
-        error: (err) => {
+        error: () => {
           this.notify.error('Gagal memuat katalog produk');
           this.loading.set(false);
         }
@@ -380,7 +392,7 @@ export class CatalogMgmtComponent implements OnInit {
   }
 
   loadCategories() {
-    this.http.get<ApiResponse<Category[]>>('/api/v1/catalog/categories')
+    this.catalogService.getCategories()
       .subscribe({
         next: (res) => {
           if (res.data) this.categories.set(res.data);
@@ -389,7 +401,7 @@ export class CatalogMgmtComponent implements OnInit {
   }
 
   loadBrands() {
-    this.http.get<ApiResponse<Brand[]>>('/api/v1/catalog/brands')
+    this.catalogService.getBrands()
       .subscribe({
         next: (res) => {
           if (res.data) this.brands.set(res.data);
@@ -408,6 +420,8 @@ export class CatalogMgmtComponent implements OnInit {
   }
 
   openAddModal() {
+    this.isEditMode.set(false);
+    this.editingProductId.set(null);
     this.newProduct = {
       sku: 'SKU-' + Math.floor(1000 + Math.random() * 9000),
       title: '',
@@ -422,6 +436,23 @@ export class CatalogMgmtComponent implements OnInit {
     this.showAddModal.set(true);
   }
 
+  openEditModal(p: Product) {
+    this.isEditMode.set(true);
+    this.editingProductId.set(p.id);
+    this.newProduct = {
+      sku: p.sku,
+      title: p.title,
+      description: p.description || '',
+      base_price: p.base_price,
+      category_id: p.category_id || '',
+      brand_id: p.brand_id || '',
+      weight_gram: p.weight_gram,
+      image_url: p.image_url || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop',
+      is_published: p.is_published
+    };
+    this.showAddModal.set(true);
+  }
+
   closeAddModal() {
     this.showAddModal.set(false);
   }
@@ -432,8 +463,7 @@ export class CatalogMgmtComponent implements OnInit {
 
   submitProduct() {
     this.submitting.set(true);
-    this.http.post<ApiResponse<any>>('/api/v1/catalog/products', {
-      sku: this.newProduct.sku,
+    const payload = {
       title: this.newProduct.title,
       description: this.newProduct.description ? this.newProduct.description : null,
       base_price: Number(this.newProduct.base_price),
@@ -442,24 +472,44 @@ export class CatalogMgmtComponent implements OnInit {
       weight_gram: Number(this.newProduct.weight_gram),
       image_url: this.newProduct.image_url ? this.newProduct.image_url : null,
       is_published: this.newProduct.is_published
-    }).subscribe({
-      next: () => {
-        this.notify.success('Produk baru berhasil ditambahkan ke katalog!');
-        this.closeAddModal();
-        this.submitting.set(false);
-        this.loadProducts();
-      },
-      error: (err) => {
-        this.notify.error(err.error?.message || 'Gagal menyimpan produk');
-        this.submitting.set(false);
-      }
-    });
+    };
+
+    if (this.isEditMode() && this.editingProductId()) {
+      this.catalogService.updateProduct(this.editingProductId()!, payload).subscribe({
+        next: () => {
+          this.notify.success('Data produk berhasil diperbarui!');
+          this.closeAddModal();
+          this.submitting.set(false);
+          this.loadProducts();
+        },
+        error: (err) => {
+          this.notify.error(err.error?.message || 'Gagal memperbarui produk');
+          this.submitting.set(false);
+        }
+      });
+    } else {
+      this.catalogService.createProduct({
+        ...payload,
+        sku: this.newProduct.sku
+      }).subscribe({
+        next: () => {
+          this.notify.success('Produk baru berhasil ditambahkan ke katalog!');
+          this.closeAddModal();
+          this.submitting.set(false);
+          this.loadProducts();
+        },
+        error: (err) => {
+          this.notify.error(err.error?.message || 'Gagal menyimpan produk');
+          this.submitting.set(false);
+        }
+      });
+    }
   }
 
   deleteProduct(id: string, title: string) {
     if (!confirm(`Hapus produk "${title}" dari katalog?`)) return;
 
-    this.http.delete<ApiResponse<any>>(`/api/v1/catalog/products/${id}`)
+    this.catalogService.deleteProduct(id)
       .subscribe({
         next: () => {
           this.notify.success('Produk berhasil dihapus');

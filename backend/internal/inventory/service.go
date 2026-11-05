@@ -1,6 +1,7 @@
 package inventory
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -9,6 +10,7 @@ import (
 )
 
 type Service interface {
+	SetCatalogClient(client *CatalogClient)
 	GetStocks(warehouseID string) ([]InventoryStock, error)
 	GetStockByProductAndWarehouse(productID, warehouseID string) (*InventoryStock, error)
 	AdjustStock(stockID string, req AdjustStockRequest) error
@@ -25,19 +27,75 @@ type Service interface {
 }
 
 type inventoryService struct {
-	repo Repository
+	repo          Repository
+	catalogClient *CatalogClient
 }
 
-func NewService(repo Repository) Service {
-	return &inventoryService{repo: repo}
+func NewService(repo Repository, catalogClient ...*CatalogClient) Service {
+	s := &inventoryService{repo: repo}
+	if len(catalogClient) > 0 && catalogClient[0] != nil {
+		s.catalogClient = catalogClient[0]
+	}
+	return s
+}
+
+func (s *inventoryService) SetCatalogClient(client *CatalogClient) {
+	s.catalogClient = client
 }
 
 func (s *inventoryService) GetStocks(warehouseID string) ([]InventoryStock, error) {
-	return s.repo.GetStocks(warehouseID)
+	stocks, err := s.repo.GetStocks(warehouseID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Enrichment via gRPC Catalog Client (Upstream -> Downstream)
+	if s.catalogClient != nil && len(stocks) > 0 {
+		productIDs := make([]string, 0, len(stocks))
+		for _, st := range stocks {
+			if st.ProductID != "" {
+				productIDs = append(productIDs, st.ProductID)
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		prodMap, err := s.catalogClient.BatchGetProducts(ctx, productIDs)
+		if err == nil {
+			for i := range stocks {
+				if prod, ok := prodMap[stocks[i].ProductID]; ok && prod != nil {
+					stocks[i].ProductTitle = prod.Title
+					stocks[i].ProductSKU = prod.Sku
+					stocks[i].ProductPrice = prod.BasePrice
+				}
+			}
+		}
+	}
+
+	return stocks, nil
 }
 
 func (s *inventoryService) GetStockByProductAndWarehouse(productID, warehouseID string) (*InventoryStock, error) {
-	return s.repo.GetStockByProductAndWarehouse(productID, warehouseID)
+	stock, err := s.repo.GetStockByProductAndWarehouse(productID, warehouseID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Enrichment via gRPC Catalog Client
+	if s.catalogClient != nil && stock != nil && stock.ProductID != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		prod, err := s.catalogClient.GetProduct(ctx, stock.ProductID)
+		if err == nil && prod != nil {
+			stock.ProductTitle = prod.Title
+			stock.ProductSKU = prod.Sku
+			stock.ProductPrice = prod.BasePrice
+		}
+	}
+
+	return stock, nil
 }
 
 func (s *inventoryService) AdjustStock(stockID string, req AdjustStockRequest) error {
@@ -77,7 +135,34 @@ func (s *inventoryService) CreateMutation(req StockMutationRequest) error {
 }
 
 func (s *inventoryService) GetMutations() ([]StockMutation, error) {
-	return s.repo.GetStockMutations()
+	mutations, err := s.repo.GetStockMutations()
+	if err != nil {
+		return nil, err
+	}
+
+	// Enrichment via gRPC Catalog Client
+	if s.catalogClient != nil && len(mutations) > 0 {
+		productIDs := make([]string, 0, len(mutations))
+		for _, m := range mutations {
+			if m.ProductID != "" {
+				productIDs = append(productIDs, m.ProductID)
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		prodMap, err := s.catalogClient.BatchGetProducts(ctx, productIDs)
+		if err == nil {
+			for i := range mutations {
+				if prod, ok := prodMap[mutations[i].ProductID]; ok && prod != nil {
+					mutations[i].ProductTitle = prod.Title
+				}
+			}
+		}
+	}
+
+	return mutations, nil
 }
 
 func (s *inventoryService) GetWarehouses() ([]Warehouse, error) {
@@ -106,7 +191,34 @@ func (s *inventoryService) GetWarehouseZones(warehouseID string) ([]WarehouseZon
 }
 
 func (s *inventoryService) GetLowStockAlerts() ([]LowStockAlert, error) {
-	return s.repo.GetLowStockAlerts()
+	alerts, err := s.repo.GetLowStockAlerts()
+	if err != nil {
+		return nil, err
+	}
+
+	// Enrichment via gRPC Catalog Client
+	if s.catalogClient != nil && len(alerts) > 0 {
+		productIDs := make([]string, 0, len(alerts))
+		for _, a := range alerts {
+			if a.ProductID != "" {
+				productIDs = append(productIDs, a.ProductID)
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		prodMap, err := s.catalogClient.BatchGetProducts(ctx, productIDs)
+		if err == nil {
+			for i := range alerts {
+				if prod, ok := prodMap[alerts[i].ProductID]; ok && prod != nil {
+					alerts[i].ProductTitle = prod.Title
+				}
+			}
+		}
+	}
+
+	return alerts, nil
 }
 
 func (s *inventoryService) GetOpnames(warehouseID string) ([]StockOpname, error) {

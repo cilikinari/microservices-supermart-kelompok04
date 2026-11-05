@@ -17,6 +17,7 @@ import (
 
 	"github.com/nusantara-supermart/backend/internal/auth"
 	"github.com/nusantara-supermart/backend/internal/catalog"
+	catalogpb "github.com/nusantara-supermart/backend/internal/catalog/pb/catalog/v1"
 	"github.com/nusantara-supermart/backend/internal/inventory"
 	inventorypb "github.com/nusantara-supermart/backend/internal/inventory/pb/inventory/v1"
 	"github.com/nusantara-supermart/backend/internal/logistics"
@@ -106,9 +107,14 @@ func main() {
 	catalogSvc := catalog.NewService(catalogRepo)
 	inventorySvc := inventory.NewService(inventoryRepo)
 
-	// Inisialisasi gRPC Client untuk Inventory (Disediakan untuk domain Catalog)
-	grpcInventoryClient := catalog.NewInventoryClient("localhost:50051")
-	_ = grpcInventoryClient
+	// Inisialisasi gRPC Client Catalog untuk domain Inventory (Inventory Upstream -> Catalog Downstream)
+	catalogGRPCClient := inventory.NewCatalogClient("localhost:50052")
+	if catalogGRPCClient != nil {
+		defer catalogGRPCClient.Close()
+		inventorySvc.SetCatalogClient(catalogGRPCClient)
+		log.Println("Inventory connected to Catalog gRPC successfully")
+	}
+
 
 	// Inisialisasi Real Consumer untuk domain Inventory
 	inventoryConsumer := inventory.NewInventoryConsumer(inventoryDB)
@@ -177,6 +183,24 @@ func main() {
 		log.Printf("🚀 gRPC Server listening on 0.0.0.0%s", grpcPort)
 		if err := grpcServer.Serve(lis); err != nil {
 			log.Fatalf("Failed to serve gRPC: %v", err)
+		}
+	}()
+
+	// Jalankan Catalog gRPC Server (Downstream) di Port 50052
+	go func() {
+		catalogGRPCPort := ":50052"
+		lis, err := net.Listen("tcp", catalogGRPCPort)
+		if err != nil {
+			log.Fatalf("Failed to listen for Catalog gRPC on %s: %v", catalogGRPCPort, err)
+		}
+
+		grpcCatalogServer := grpc.NewServer()
+		grpcCatalogHandler := catalog.NewGRPCHandler(catalogSvc)
+		catalogpb.RegisterCatalogServiceServer(grpcCatalogServer, grpcCatalogHandler)
+
+		log.Printf("🚀 Catalog gRPC Server listening on 0.0.0.0%s", catalogGRPCPort)
+		if err := grpcCatalogServer.Serve(lis); err != nil {
+			log.Fatalf("Failed to serve Catalog gRPC: %v", err)
 		}
 	}()
 

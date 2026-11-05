@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package supermart.catalog.v1;
+
+option go_package = "github.com/nusantara-supermart/backend/internal/catalog/pb/catalog/v1;catalogpb";
+
+service CatalogService {
+  rpc GetProduct (GetProductRequest) returns (GetProductResponse);
+  rpc BatchGetProducts (BatchGetProductsRequest) returns (BatchGetProductsResponse);
+}
+
+message ProductItem {
+  string id = 1;
+  string sku = 2;
+  string title = 3;
+  string description = 4;
+  double base_price = 5;
+  int32 weight_gram = 6;
+  bool is_published = 7;
+  string category_name = 8;
+  string brand_name = 9;
+}
+
+message GetProductRequest {
+  string product_id = 1;
+}
+
+message GetProductResponse {
+  ProductItem product = 1;
+}
+
+message BatchGetProductsRequest {
+  repeated string product_ids = 1;
+}
+
+message BatchGetProductsResponse {
+  repeated ProductItem products = 1;
+}
+

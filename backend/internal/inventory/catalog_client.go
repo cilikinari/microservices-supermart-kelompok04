@@ -10,7 +10,8 @@ import (
 	catalogpb "github.com/nusantara-supermart/backend/internal/catalog/pb/catalog/v1"
 )
 
-// CatalogClient menangani panggilan gRPC dari Inventory (Upstream) ke Catalog (Downstream)
+// CatalogClient menangani panggilan gRPC dari Inventory (Downstream / Customer) ke Catalog (Upstream / Supplier)
+// Sesuai DDD Context Mapping: Catalog bertindak sebagai Upstream penyedia master data produk.
 type CatalogClient struct {
 	client catalogpb.CatalogServiceClient
 	conn   *grpc.ClientConn

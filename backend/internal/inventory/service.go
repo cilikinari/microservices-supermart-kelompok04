@@ -49,7 +49,7 @@ func (s *inventoryService) GetStocks(warehouseID string) ([]InventoryStock, erro
 		return nil, err
 	}
 
-	// Enrichment via gRPC Catalog Client (Upstream -> Downstream)
+	// Enrichment via gRPC Catalog Client (Catalog Upstream/Supplier -> Inventory Downstream/Customer, pola Conformist)
 	if s.catalogClient != nil && len(stocks) > 0 {
 		productIDs := make([]string, 0, len(stocks))
 		for _, st := range stocks {

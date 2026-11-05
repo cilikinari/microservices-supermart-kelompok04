@@ -118,7 +118,7 @@ func main() {
 	catalogSvc := catalog.NewService(catalogRepo)
 	inventorySvc := inventory.NewService(inventoryRepo)
 
-	// Inisialisasi gRPC Client Catalog untuk domain Inventory (Inventory Upstream -> Catalog Downstream)
+	// Inisialisasi gRPC Client Catalog untuk domain Inventory (Catalog Upstream/Supplier -> Inventory Downstream/Customer)
 	catalogGRPCClient := inventory.NewCatalogClient("localhost:50052")
 	if catalogGRPCClient != nil {
 		defer catalogGRPCClient.Close()
@@ -197,7 +197,7 @@ func main() {
 		}
 	}()
 
-	// Jalankan Catalog gRPC Server (Downstream) di Port 50052
+	// Jalankan Catalog gRPC Server (Upstream / Master Data Provider) di Port 50052
 	go func() {
 		catalogGRPCPort := ":50052"
 		lis, err := net.Listen("tcp", catalogGRPCPort)

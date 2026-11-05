@@ -2,7 +2,7 @@ import grpc from 'k6/net/grpc';
 import { check } from 'k6';
 
 const client = new grpc.Client();
-client.load(['../proto/inventory/v1'], 'inventory.proto');
+client.load(['proto/inventory/v1', '../proto/inventory/v1'], 'inventory.proto');
 
 // Skenario 1: 50 VU selama 30 detik
 export const options = { vus: 50, duration: '30s', summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'] };

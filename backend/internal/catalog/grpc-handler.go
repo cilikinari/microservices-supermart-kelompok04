@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"log"
 
 	catalogpb "github.com/nusantara-supermart/backend/internal/catalog/pb/catalog/v1"
 	"google.golang.org/grpc/codes"
@@ -78,6 +79,7 @@ func (h *GRPCHandler) BatchGetProducts(ctx context.Context, req *catalogpb.Batch
 		}
 	}
 
+	log.Printf("📡 [gRPC Server] Catalog melayani BatchGetProducts: %d produk dikirim ke caller (Inventory)", len(items))
 	return &catalogpb.BatchGetProductsResponse{
 		Products: items,
 	}, nil

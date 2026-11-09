@@ -141,6 +141,20 @@ CREATE TABLE IF NOT EXISTS `rabbitmq_processed_events` (
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 6. Payment Methods Master
+CREATE TABLE IF NOT EXISTS `payment_methods` (
+    `id` VARCHAR(36) PRIMARY KEY,
+    `method_code` VARCHAR(50) NOT NULL UNIQUE,
+    `method_name` VARCHAR(100) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO `payment_methods` (`id`, `method_code`, `method_name`) VALUES
+('pm000001-0000-0000-0000-000000000001', 'VA_BCA', 'BCA Virtual Account'),
+('pm000001-0000-0000-0000-000000000002', 'VA_MANDIRI', 'Mandiri Virtual Account'),
+('pm000001-0000-0000-0000-000000000003', 'GOPAY', 'GoPay E-Wallet'),
+('pm000001-0000-0000-0000-000000000004', 'OVO', 'OVO E-Wallet'),
+('pm000001-0000-0000-0000-000000000005', 'QRIS', 'QRIS Standard');
+
 -- Seed Data Status Order
 INSERT IGNORE INTO `order_statuses` (`id`, `status_code`, `status_name`) VALUES
 ('os000001-0000-0000-0000-000000000001', 'AWAITING_PAYMENT', 'Menunggu Pembayaran'),

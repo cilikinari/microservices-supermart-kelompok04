@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -63,6 +64,7 @@ func (s *inventoryService) GetStocks(warehouseID string) ([]InventoryStock, erro
 
 		prodMap, err := s.catalogClient.BatchGetProducts(ctx, productIDs)
 		if err == nil {
+			log.Printf("🚀 [gRPC Call] Inventory berhasil menarik detail %d produk dari Catalog via gRPC (Port 50052)", len(prodMap))
 			for i := range stocks {
 				if prod, ok := prodMap[stocks[i].ProductID]; ok && prod != nil {
 					stocks[i].ProductTitle = prod.Title

@@ -4,15 +4,16 @@
 
 ---
 
-### Rincian Basis Data Terisolasi
+### Rincian Layanan Mikro (*Microservices*) & Basis Data Terisolasi
 
-| Service | DBMS | Port Host | Nama Database | Username | Password |
+| Service | DBMS / Broker | Port Host (HTTP / gRPC) | Port DB | Nama Database | Username |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Identity Service** | MySQL 8.0 | `3309` | `identity_service_db` | `identity_admin` | `identity_secret_pass` |
-| **Catalog Service** | MySQL 8.0 | `3307` | `catalog_service_db` | `catalog_admin` | `catalog_secret_pass` |
-| **Inventory Service**| MySQL 8.0 | `3308` | `inventory_service_db` | `inventory_admin` | `inventory_secret_pass` |
-| **Order Service** | MySQL 8.0 | `3310` | `order_service_db` | `order_admin` | `order_secret_pass` |
-| **RabbitMQ Broker** | 3.13 Mgmt | `5672` (AMQP), `15672` (UI) | Virtual Host: `/` | `supermart` | `supermart123` |
+| **Frontend & Reverse Proxy** | Nginx | `4200` / `80` (HTTP Ingress) | - | - | - |
+| **Identity Service** | MySQL 8.0 | `3001` (HTTP) | `3309` | `identity_service_db` | `identity_admin` |
+| **Catalog Service** | MySQL 8.0 | `3002` (HTTP), `50052` (gRPC) | `3307` | `catalog_service_db` | `catalog_admin` |
+| **Inventory Service**| MySQL 8.0 | `3003` (HTTP), `50051` (gRPC) | `3308` | `inventory_service_db` | `inventory_admin` |
+| **Order Service** | MySQL 8.0 | `3004` (HTTP) | `3310` | `order_service_db` | `order_admin` |
+| **RabbitMQ Broker** | 3.13 Mgmt | `5672` (AMQP), `15672` (UI) | - | Virtual Host: `/` | `supermart` |
 
 ---
 
@@ -40,30 +41,40 @@ Jalankan satu perintah berikut dari direktori root:
 docker compose -f deployments/docker/docker-compose.yml up --build -d
 ```
 
-### 4. Verifikasi Kesehatan 7 Kontainer
+### 4. Verifikasi Kesehatan 10 Kontainer
 Periksa status kontainer:
 ```bash
 docker compose -f deployments/docker/docker-compose.yml ps
 ```
-Semua 7 kontainer berikut **wajib berstatus `Up` / `healthy`**:
+Semua 10 kontainer berikut **wajib berstatus `Up` / `healthy`**:
 1. `supermart-identity-db`
 2. `supermart-catalog-db`
 3. `supermart-inventory-db`
 4. `supermart-order-db`
 5. `supermart-rabbitmq`
-6. `supermart-backend`
-7. `supermart-frontend`
+6. `supermart-identity-service`
+7. `supermart-catalog-service`
+8. `supermart-inventory-service`
+9. `supermart-order-service`
+10. `supermart-frontend`
 
-### 5. Memantau Log Server
-Untuk melihat proses inisialisasi gRPC, database, dan RabbitMQ consumer:
+### 5. Memantau Log Layanan
+Untuk melihat proses inisialisasi gRPC, database, atau RabbitMQ consumer per-service:
 ```bash
-docker compose -f deployments/docker/docker-compose.yml logs -f backend
+# Pantau log Catalog gRPC Server:
+docker compose -f deployments/docker/docker-compose.yml logs -f catalog-service
+
+# Pantau log Inventory gRPC Server & RabbitMQ Consumer:
+docker compose -f deployments/docker/docker-compose.yml logs -f inventory-service
+
+# Pantau log Order Service & RabbitMQ Publisher:
+docker compose -f deployments/docker/docker-compose.yml logs -f order-service
 ```
 ---
 
 ## 🧪 Skenario Pengujian Lengkap
 
-### Skenario A: Uji Liveness & Healthcheck (REST API)
+### Skenario A: Uji Liveness & Healthcheck (REST API via Gateway)
 Buka di peramban atau jalankan lewat terminal:
 ```bash
 curl http://localhost:3000/api/v1/health
@@ -72,9 +83,15 @@ curl http://localhost:3000/api/v1/health
 ```json
 {
   "success": true,
-  "message": "Nusantara SuperMart Monolith API is operational",
+  "message": "Nusantara SuperMart Microservices Gateway is operational",
   "data": {
     "database": "healthy",
+    "services": {
+      "catalog": "healthy",
+      "identity": "healthy",
+      "inventory": "healthy",
+      "order": "healthy"
+    },
     "version": "1.0.0"
   }
 }
@@ -90,23 +107,21 @@ Masuk ke antarmuka RabbitMQ Web Management:
 * Di menu **Exchanges**, amati `supermart.events` dan `supermart.dlx`.
 * Di menu **Queues**, amati antrean `inventory_stock_reservation_queue` dan `inventory_stock_reservation_queue.dlq`.
 
-Gunakan tool pengujian otomatis yang telah disediakan di `backend/cmd/publish-test`:
+Gunakan tool pengujian otomatis yang telah disediakan di `tools/publish-test`:
 
 #### 1. Uji Pengiriman Massal (Batch Mode)
 Menguji pengiriman 5 antrean transaksi secara asinkron:
 ```bash
-cd backend
-go run ./cmd/publish-test -mode=batch -count=5
+go run ./tools/publish-test -mode=batch -count=5
 ```
-* **Hasil di Log Backend:** Consumer menerima 5 event pesanan, memotong stok secara aman, dan mengirim sinyal `Ack`.
+* **Hasil di Log Inventory Service:** Consumer menerima 5 event pesanan, memotong stok secara aman, dan mengirim sinyal `Ack`.
 
 #### 2. Uji Idempotensi (Mitigasi Double-Reservation)
 Menguji apa yang terjadi jika jaringan mengirimkan pesan pesanan yang sama 2 kali:
 ```bash
-cd backend
-go run ./cmd/publish-test -mode=duplicate -event-id=DEMO-DUP-001
+go run ./tools/publish-test -mode=duplicate -event-id=DEMO-DUP-001
 ```
-* **Hasil di Log Backend:**  
+* **Hasil di Log Inventory Service:**  
   * Pesan 1: Diproses dan stok dikunci (*quantity_reserved + 2*).  
   * Pesan 2: Terdeteksi duplikat! Consumer mencetak log:  
     `[Idempotency] Event DEMO-DUP-001 ... sudah pernah diproses. Melewati mutasi stok ganda.`  
@@ -114,23 +129,22 @@ go run ./cmd/publish-test -mode=duplicate -event-id=DEMO-DUP-001
 #### 3. Uji Poison Pill & Dead-Letter Queue (DLQ)
 Menguji ketahanan sistem jika menerima pesan korup atau JSON cacat kontrak:
 ```bash
-cd backend
-go run ./cmd/publish-test -mode=poison
+go run ./tools/publish-test -mode=poison
 ```
-* **Hasil:** Consumer otomatis menolak pesan via `NACK (requeue=false)` dan RabbitMQ mengalihkannya ke **DLQ** (`inventory_stock_reservation_queue.dlq`) tanpa membuat worker backend crash! Cek antrean DLQ di browser [http://localhost:15672/#/queues](http://localhost:15672/#/queues).
+* **Hasil:** Consumer otomatis menolak pesan via `NACK (requeue=false)` dan RabbitMQ mengalihkannya ke **DLQ** (`inventory_stock_reservation_queue.dlq`) tanpa membuat worker service crash! Cek antrean DLQ di browser [http://localhost:15672/#/queues](http://localhost:15672/#/queues).
 
 ---
 
 ### Skenario C: Verifikasi Komunikasi gRPC (Bagian Astrid)
-Layanan gRPC otomatis aktif di background backend pada dua port:
-* **Inventory gRPC**: Port `50051`
-* **Catalog gRPC**: Port `50052`
+Layanan gRPC aktif secara mandiri pada kontainernya masing-masing:
+* **Inventory gRPC**: Port `50051` (`supermart-inventory-service`)
+* **Catalog gRPC**: Port `50052` (`supermart-catalog-service`)
 
-Saat Frontend membuka etalase katalog atau saat k6 dijalankan, komunikasi gRPC langsung terjadi dan tercetak di log backend:
+Saat Frontend membuka etalase katalog atau saat k6 dijalankan, komunikasi gRPC langsung terjadi dan tercetak di log kontainer terkait:
 ```bash
-docker compose -f deployments/docker/docker-compose.yml logs -f backend
+docker compose -f deployments/docker/docker-compose.yml logs -f catalog-service
+docker compose -f deployments/docker/docker-compose.yml logs -f inventory-service
 ```
-Log akan mencatat panggilan gRPC secara transparan (*real-time*). Untuk pengujian beban gRPC, cukup jalankan skrip k6 di Skenario E.
 
 ---
 
@@ -138,14 +152,14 @@ Log akan mencatat panggilan gRPC secara transparan (*real-time*). Untuk pengujia
 Buka browser di:
 * **URL Utama**: [http://localhost:4200](http://localhost:4200) atau [http://localhost:80](http://localhost:80)
 
-1. **Jelajah Katalog**: Buka halaman produk. Frontend mengambil data dari backend via endpoint `/api/v1/catalog/products`.
+1. **Jelajah Katalog**: Buka halaman produk. Frontend mengambil data dari gateway via endpoint `/api/v1/catalog/products`.
 2. **Login Akun Demo**:
    * Email: `wayan.putra@gmail.com`
    * Password: `password123`
 3. **Simulasi Checkout**:
    * Masukkan produk ke keranjang belanja.
    * Lakukan checkout pesanan.
-   * Amati terminal: Event `OrderCreated` otomatis terbit ke RabbitMQ dan stok gudang otomatis ter-reservasi di database Inventory.
+   * Amati terminal: Event `OrderCreated` otomatis terbit ke RabbitMQ oleh `order-service` dan stok gudang otomatis ter-reservasi di database Inventory oleh `inventory-service`.
 
 ---
 
@@ -163,9 +177,6 @@ k6 run scripts/grpc_test.js
 k6 run scripts/catalog_grpc_test.js
 ```
 
-> **Tips:** Jika k6 belum terpasang di host, kamu bisa menjalankannya langsung via Docker:  
-> `docker run --rm --net=host -v $(pwd):/app -w /app grafana/k6 run scripts/grpc_test.js`
-
 ---
 
 ## 🛠️ Perintah Berguna (*Cheat Sheet*)
@@ -180,10 +191,10 @@ docker compose -f deployments/docker/docker-compose.yml down
 # 3. Menghentikan kontainer dan MERESET SEMUA DATA DATABASE (Fresh Start):
 docker compose -f deployments/docker/docker-compose.yml down -v
 
-# 4. Menjalankan Backend secara lokal (Host) untuk debugging:
-# Matikan backend container terlebih dahulu agar port 3000 bebas:
-docker compose -f deployments/docker/docker-compose.yml stop backend
-# Jalankan backend lokal:
-cd backend && go run main.go
+# 4. Menjalankan mikroservis secara mandiri untuk debugging lokal:
+go run ./services/identity-service/cmd/main.go
+go run ./services/catalog-service/cmd/main.go
+go run ./services/inventory-service/cmd/main.go
+go run ./services/order-service/cmd/main.go
 ```
 ---

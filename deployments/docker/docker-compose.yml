@@ -107,34 +107,107 @@ services:
     networks:
       - supermart-network
 
-  backend:
+  # 1. Identity Service (Microservice)
+  identity-service:
     build:
-      context: ../../backend
-      dockerfile: Dockerfile
-    container_name: supermart-backend
+      context: ../..
+      dockerfile: services/identity-service/Dockerfile
+    container_name: supermart-identity-service
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-3000}:3000"
-      - "50051:50051"
-      - "50052:50052"
+      - "${IDENTITY_SERVICE_PORT:-3001}:3001"
     environment:
       - APP_ENV=${APP_ENV:-production}
-      - APP_PORT=${APP_PORT:-3000}
+      - PORT=3001
       - IDENTITY_DB_HOST=identity-db
       - IDENTITY_DB_PORT=3306
       - IDENTITY_DB_NAME=${IDENTITY_DB_NAME:-identity_service_db}
       - IDENTITY_DB_USER=${IDENTITY_DB_USER:-identity_admin}
       - IDENTITY_DB_PASSWORD=${IDENTITY_DB_PASSWORD:-identity_secret_pass}
+      - JWT_SECRET=${JWT_SECRET:-supermart-secret-key-for-nusantara-course-2026}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:4200,http://localhost:80,http://127.0.0.1:4200,http://127.0.0.1:80,http://localhost:3000}
+    depends_on:
+      identity-db:
+        condition: service_healthy
+    networks:
+      - supermart-network
+
+  # 2. Catalog Service (Microservice - REST + gRPC)
+  catalog-service:
+    build:
+      context: ../..
+      dockerfile: services/catalog-service/Dockerfile
+    container_name: supermart-catalog-service
+    restart: unless-stopped
+    ports:
+      - "${CATALOG_SERVICE_PORT:-3002}:3002"
+      - "50052:50052"
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - PORT=3002
+      - CATALOG_GRPC_PORT=50052
       - CATALOG_DB_HOST=catalog-db
       - CATALOG_DB_PORT=3306
       - CATALOG_DB_NAME=${CATALOG_DB_NAME:-catalog_service_db}
       - CATALOG_DB_USER=${CATALOG_DB_USER:-catalog_admin}
       - CATALOG_DB_PASSWORD=${CATALOG_DB_PASSWORD:-catalog_secret_pass}
+      - JWT_SECRET=${JWT_SECRET:-supermart-secret-key-for-nusantara-course-2026}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:4200,http://localhost:80,http://127.0.0.1:4200,http://127.0.0.1:80,http://localhost:3000}
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+    networks:
+      - supermart-network
+
+  # 3. Inventory Service (Microservice - REST + gRPC + RabbitMQ Consumer)
+  inventory-service:
+    build:
+      context: ../..
+      dockerfile: services/inventory-service/Dockerfile
+    container_name: supermart-inventory-service
+    restart: unless-stopped
+    ports:
+      - "${INVENTORY_SERVICE_PORT:-3003}:3003"
+      - "50051:50051"
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - PORT=3003
+      - INVENTORY_GRPC_PORT=50051
+      - CATALOG_GRPC_ADDR=catalog-service:50052
       - INVENTORY_DB_HOST=inventory-db
       - INVENTORY_DB_PORT=3306
       - INVENTORY_DB_NAME=${INVENTORY_DB_NAME:-inventory_service_db}
       - INVENTORY_DB_USER=${INVENTORY_DB_USER:-inventory_admin}
       - INVENTORY_DB_PASSWORD=${INVENTORY_DB_PASSWORD:-inventory_secret_pass}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=${RABBITMQ_USER:-supermart}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-supermart123}
+      - JWT_SECRET=${JWT_SECRET:-supermart-secret-key-for-nusantara-course-2026}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:4200,http://localhost:80,http://127.0.0.1:4200,http://127.0.0.1:80,http://localhost:3000}
+    depends_on:
+      inventory-db:
+        condition: service_healthy
+      catalog-service:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - supermart-network
+
+  # 4. Order Service (Microservice - REST + RabbitMQ Publisher + gRPC Client)
+  order-service:
+    build:
+      context: ../..
+      dockerfile: services/order-service/Dockerfile
+    container_name: supermart-order-service
+    restart: unless-stopped
+    ports:
+      - "${ORDER_SERVICE_PORT:-3004}:3004"
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - PORT=3004
+      - CATALOG_GRPC_ADDR=catalog-service:50052
       - ORDER_DB_HOST=order-db
       - ORDER_DB_PORT=3306
       - ORDER_DB_NAME=${ORDER_DB_NAME:-order_service_db}
@@ -145,21 +218,18 @@ services:
       - RABBITMQ_USER=${RABBITMQ_USER:-supermart}
       - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-supermart123}
       - JWT_SECRET=${JWT_SECRET:-supermart-secret-key-for-nusantara-course-2026}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:4200,http://localhost:80,http://127.0.0.1:4200,http://127.0.0.1:80}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:4200,http://localhost:80,http://127.0.0.1:4200,http://127.0.0.1:80,http://localhost:3000}
     depends_on:
-      identity-db:
-        condition: service_healthy
-      catalog-db:
-        condition: service_healthy
-      inventory-db:
-        condition: service_healthy
       order-db:
         condition: service_healthy
+      catalog-service:
+        condition: service_started
       rabbitmq:
         condition: service_healthy
     networks:
       - supermart-network
 
+  # 5. Frontend Angular SPA (Acts as Reverse Proxy / Gateway via Nginx)
   frontend:
     build:
       context: ../../frontend
@@ -170,7 +240,10 @@ services:
       - "80:80"
       - "${FRONTEND_PORT:-4200}:80"
     depends_on:
-      - backend
+      - identity-service
+      - catalog-service
+      - inventory-service
+      - order-service
     networks:
       - supermart-network
 
